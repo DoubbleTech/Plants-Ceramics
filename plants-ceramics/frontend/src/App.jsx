@@ -10,7 +10,7 @@ const initialProducts = [
   { id: 5, name: "Terracotta Pot", category: "Ceramic Pot", price: 1200, stock: { "Karachi": 10, "Islamabad": 5, "Rawalpindi": 2 }, isBykeaEligible: false, image: "🏺", desc: "Heavy 12-inch clay pot. Fragile.", longDesc: "Hand-thrown by local artisans, this porous terracotta allows plant roots to breathe and prevents waterlogging. Natural variations in color make each piece unique." },
   { id: 6, name: "Glazed Blue Vase", category: "Ceramic Vase", price: 2500, stock: { "Karachi": 4, "Islamabad": 4, "Rawalpindi": 0 }, isBykeaEligible: false, image: "🏺", desc: "Tall decorative ceramic vase.", longDesc: "A striking centerpiece for any room. The deep ocean-blue glaze reflects light beautifully. Perfect for dried arrangements or standing elegantly on its own." },
   { id: 7, name: "Clay Water Cooler", category: "Ceramic Cooler", price: 1800, stock: { "Karachi": 8, "Islamabad": 2, "Rawalpindi": 0 }, isBykeaEligible: false, image: "🚰", desc: "Traditional cooling water dispenser.", longDesc: "A traditional Matka designed for modern homes. Naturally cools water through evaporation while adding an earthy alkalinity. Comes with a secure lid and sturdy base." },
-  { id: 8, name: "Ceramic Figurine", category: "Ceramic aCraft", price: 600, stock: { "Karachi": 10, "Islamabad": 10, "Rawalpindi": 10 }, isBykeaEligible: true, image: "🕊️", desc: "Hand-painted garden decor.", longDesc: "Add a touch of whimsy to your potted plants with this delicately hand-painted ceramic bird. Weather-resistant and perfectly sized to nestle among foliage." },
+  { id: 8, name: "Ceramic Figurine", category: "Ceramic Craft", price: 600, stock: { "Karachi": 10, "Islamabad": 10, "Rawalpindi": 10 }, isBykeaEligible: true, image: "🕊️", desc: "Hand-painted garden decor.", longDesc: "Add a touch of whimsy to your potted plants with this delicately hand-painted ceramic bird. Weather-resistant and perfectly sized to nestle among foliage." },
   { id: 9, name: "Nursery Pot", category: "Plastic Pot", price: 150, stock: { "Karachi": 50, "Islamabad": 50, "Rawalpindi": 50 }, isBykeaEligible: true, image: "🪣", desc: "Lightweight 8-inch durable pot.", longDesc: "High-quality, flexible nursery pots with excellent drainage. Ideal for repotting growing plants or starting larger seeds. Reusable and UV resistant." },
   { id: 10, name: "Organic Compost", category: "Fertilizer", price: 800, stock: { "Karachi": 20, "Islamabad": 10, "Rawalpindi": 10 }, isBykeaEligible: true, image: "🍂", desc: "5kg bag of nutrient-rich soil.", longDesc: "A premium blend of decomposed organic matter. Enhances soil structure, retains moisture, and provides a slow release of vital nutrients to keep your botanicals thriving." },
   { id: 11, name: "Neem Oil Spray", category: "Spray", price: 550, stock: { "Karachi": 15, "Islamabad": 15, "Rawalpindi": 0 }, isBykeaEligible: true, image: "🧴", desc: "500ml organic pest control.", longDesc: "A completely natural, cold-pressed neem oil solution. Safely eradicates aphids, spider mites, and whiteflies without harming beneficial insects or pets." },
@@ -38,7 +38,6 @@ const formatPrice = (price) => `PKR ${price.toLocaleString()}`;
 export default function App() {
   // --- Navigation & Core State ---
   const [view, setView] = useState(() => {
-    // If the user navigates directly to /admin, show the staff portal.
     if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
       return 'admin-login';
     }
@@ -91,7 +90,6 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    // 24-Hour City Persistence Logic
     const savedCity = localStorage.getItem('pc_selected_city');
     const lastActivity = localStorage.getItem('pc_last_activity');
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
@@ -352,9 +350,410 @@ export default function App() {
     }
   };
 
-  // --- RENDER ---
+
+  // ==========================================
+  // RENDER: ISOLATED ADMIN PORTAL
+  // ==========================================
+  if (view === 'admin-login' || view === 'admin-dashboard') {
+    return (
+      <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A] selection:bg-[#2C3D30] selection:text-[#F7F5F0]" onClick={closeAddMenu}>
+        <div className="pt-8 pb-24">
+          
+          {/* VIEW: ADMIN LOGIN */}
+          {view === 'admin-login' && (
+            <div className="max-w-md mx-auto px-8 py-32 animate-in fade-in duration-[1000ms]">
+              <h2 className="text-4xl font-serif mb-2">Staff Portal.</h2>
+              <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 mb-16 border-b border-[#E5E0D8] pb-8">Authorized Access Only</p>
+              
+              <form onSubmit={handleLogin} className="space-y-8">
+                <div>
+                  <input 
+                    type="text" 
+                    placeholder="Identification"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider rounded-none transition-colors placeholder:text-[#1A1A1A]/30"
+                    required
+                  />
+                </div>
+                <div>
+                  <input 
+                    type="password" 
+                    placeholder="Passcode"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider rounded-none transition-colors placeholder:text-[#1A1A1A]/30"
+                    required
+                  />
+                </div>
+                {loginError && <p className="text-red-900 text-[10px] uppercase tracking-[0.2em]">{loginError}</p>}
+                <button 
+                  type="submit"
+                  className="w-full bg-[#1A1A1A] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 mt-8 hover:bg-[#2C3D30] transition-colors"
+                >
+                  Authenticate
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* VIEW: ADMIN PANEL */}
+          {view === 'admin-dashboard' && (
+            <div className="max-w-[90rem] mx-auto px-8 md:px-16 animate-in fade-in duration-[1000ms]">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 border-b border-[#1A1A1A] pb-8 gap-8">
+                <div>
+                  <h2 className="text-5xl font-serif mb-4">Master Ledger</h2>
+                  <div className="flex gap-8 text-[10px] uppercase tracking-[0.3em] mt-4">
+                    <button onClick={() => setAdminTab('ledger')} className={`pb-2 transition-colors ${adminTab === 'ledger' ? 'text-[#1A1A1A] border-b border-[#1A1A1A]' : 'text-[#1A1A1A]/40 hover:text-[#1A1A1A]'}`}>Inventory</button>
+                    <button onClick={() => setAdminTab('orders')} className={`pb-2 transition-colors flex items-center gap-2 ${adminTab === 'orders' ? 'text-[#1A1A1A] border-b border-[#1A1A1A]' : 'text-[#1A1A1A]/40 hover:text-[#1A1A1A]'}`}>
+                      Order Manifest 
+                      {orders && orders.length > 0 && <span className="bg-[#2C3D30] text-[#F7F5F0] px-1.5 py-0.5 rounded-sm">{orders.length}</span>}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-8 items-center">
+                  {adminTab === 'ledger' && (
+                    <div className="relative">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setShowAddMenu(!showAddMenu); }} 
+                        className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] hover:bg-[#2C3D30] px-6 py-3 transition-colors font-medium shadow-sm"
+                      >
+                        <Plus size={12} strokeWidth={2} /> Add <ChevronDown size={12} strokeWidth={2} className={`transition-transform duration-300 ${showAddMenu ? 'rotate-180' : ''}`} />
+                      </button>
+                      
+                      {showAddMenu && (
+                        <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-[#E5E0D8] shadow-xl z-50 flex flex-col py-2 animate-in fade-in zoom-in-95 duration-200">
+                          <button onClick={() => { setShowCityModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/70 hover:text-[#1A1A1A] hover:bg-[#F7F5F0] transition-colors border-b border-[#E5E0D8]/50">
+                            New City Region
+                          </button>
+                          <button onClick={() => { setShowCategoryModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/70 hover:text-[#1A1A1A] hover:bg-[#F7F5F0] transition-colors border-b border-[#E5E0D8]/50">
+                            New Category
+                          </button>
+                          <button onClick={() => { setShowNewEntryModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/70 hover:text-[#1A1A1A] hover:bg-[#F7F5F0] transition-colors border-b border-[#E5E0D8]/50">
+                            New Product Entry
+                          </button>
+                          <button onClick={() => { setShowCSVModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#2C3D30] font-bold hover:bg-[#F7F5F0] transition-colors">
+                            Bulk CSV Upload
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button onClick={() => { setIsAuthenticated(false); setView('admin-login'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
+                    Terminate Session
+                  </button>
+                </div>
+              </div>
+
+              {/* MODALS INSIDE ADMIN DASHBOARD */}
+              {showCSVModal && (
+                <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-in fade-in duration-500">
+                  <div className="bg-white border border-[#1A1A1A] max-w-xl w-full p-12 relative shadow-2xl">
+                    <button onClick={() => setShowCSVModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
+                    
+                    <h3 className="text-3xl font-serif mb-2">Bulk Integration</h3>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-10 border-b border-[#E5E0D8] pb-6">Upload .CSV catalog file</p>
+                    
+                    <div className="border-2 border-dashed border-[#1A1A1A]/20 bg-[#EBE6E0]/30 hover:bg-[#EBE6E0]/60 transition-colors p-12 text-center relative group">
+                      {isUploadingCSV ? (
+                        <div className="flex flex-col items-center justify-center">
+                          <Loader2 className="animate-spin text-[#2C3D30] mb-4" size={32} strokeWidth={1} />
+                          <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Parsing & Syncing Catalog...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="w-12 h-12 bg-[#1A1A1A] text-[#F7F5F0] rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
+                            <Plus size={20} strokeWidth={1} />
+                          </div>
+                          <span className="block text-sm font-medium mb-2">Drag and drop your CSV file here</span>
+                          <span className="block text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-6">or click to browse local files</span>
+                          
+                          <input type="file" accept=".csv" onChange={handleCSVUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                          
+                          <div className="text-left text-xs font-light text-[#1A1A1A]/60 bg-white p-4 border border-[#E5E0D8]">
+                            <strong>Required CSV Headers:</strong><br/>
+                            Name, ImageURL_1, ImageURL_2, ImageURL_3, ShortDesc, LongDesc, Amount, Discount, Sale, Shipping, Category, SubCategory, Stock_Karachi, Stock_Islamabad, Stock_Rawalpindi
+                          </div>
+                          <button onClick={downloadSampleCSV} className="mt-6 text-[10px] uppercase tracking-[0.2em] text-[#2C3D30] font-bold hover:opacity-50 transition-opacity underline underline-offset-4">
+                            Download Sample File
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showCityModal && (
+                <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-in fade-in duration-500">
+                  <div className="bg-white border border-[#1A1A1A] max-w-md w-full p-12 relative shadow-2xl">
+                    <button onClick={() => setShowCityModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
+                    
+                    <h3 className="text-3xl font-serif mb-2">New Region</h3>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-10 border-b border-[#E5E0D8] pb-6">Add a city to delivery logistics</p>
+                    
+                    <form onSubmit={submitNewCity}>
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="City Name (e.g., Lahore)" 
+                        value={newCityName} 
+                        onChange={(e) => setNewCityName(e.target.value)} 
+                        className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 mb-8 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" 
+                      />
+                      <button type="submit" className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-4 transition-colors flex items-center justify-center gap-2">
+                        Add Location <Plus size={12} strokeWidth={1} />
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {showCategoryModal && (
+                <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-in fade-in duration-500">
+                  <div className="bg-white border border-[#1A1A1A] max-w-md w-full p-12 relative shadow-2xl">
+                    <button onClick={() => setShowCategoryModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
+                    
+                    <h3 className="text-3xl font-serif mb-2">New Category</h3>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-10 border-b border-[#E5E0D8] pb-6">Expand your catalog taxonomy</p>
+                    
+                    <form onSubmit={submitNewCategory}>
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="Category Name (e.g., Rare Succulents)" 
+                        value={newCategoryName} 
+                        onChange={(e) => setNewCategoryName(e.target.value)} 
+                        className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 mb-8 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" 
+                      />
+                      <button type="submit" className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-4 transition-colors flex items-center justify-center gap-2">
+                        Create Category <Plus size={12} strokeWidth={1} />
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {showNewEntryModal && (
+                <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-8 overflow-y-auto animate-in fade-in duration-500">
+                  <div className="bg-white border border-[#1A1A1A] max-w-4xl w-full p-8 md:p-12 relative shadow-2xl my-auto">
+                    <button onClick={() => setShowNewEntryModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
+                    
+                    <h3 className="text-3xl font-serif mb-2">New Botanical Entry</h3>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-8 border-b border-[#E5E0D8] pb-6">Individual Catalog Addition</p>
+                    
+                    <form onSubmit={submitNewEntry} className="space-y-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <input type="text" name="name" required placeholder="Product Name *" value={newEntryForm.name} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                        
+                        <div className="flex gap-4">
+                          <select name="category" value={newEntryForm.category} onChange={handleNewEntryChange} className="w-1/2 bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light text-[#1A1A1A]/60">
+                            {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <input type="text" name="subCategory" placeholder="Sub-Category" value={newEntryForm.subCategory} onChange={handleNewEntryChange} className="w-1/2 bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-8">
+                        <input type="number" name="amount" required placeholder="Amount (PKR) *" value={newEntryForm.amount} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                        
+                        <div className="flex items-center gap-8">
+                          <input type="number" name="discount" placeholder="Discount %" value={newEntryForm.discount} onChange={handleNewEntryChange} className="w-1/2 bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                          <div className="flex items-center gap-3 border-b border-[#1A1A1A]/20 pb-3 w-1/2">
+                            <input type="checkbox" name="sale" checked={newEntryForm.sale} onChange={handleNewEntryChange} id="sale-checkbox" className="w-4 h-4 accent-[#1A1A1A]" />
+                            <label htmlFor="sale-checkbox" className="text-sm tracking-wider font-light text-[#1A1A1A]/60 cursor-pointer">Active Sale</label>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60">Regional Inventory Configuration</label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 bg-[#EBE6E0]/50 p-6 border border-[#E5E0D8]">
+                          {cities.map(city => (
+                            <div key={city}>
+                              <input 
+                                type="number" 
+                                name={`stock_${city}`} 
+                                placeholder={`${city} Qty *`} 
+                                required 
+                                value={newEntryForm.stock[city] !== undefined ? newEntryForm.stock[city] : ''} 
+                                onChange={handleNewEntryChange} 
+                                className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-medium placeholder:text-[#1A1A1A]/30" 
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <input type="text" name="image1" placeholder="Image URL 1 / Emoji *" required value={newEntryForm.image1} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                        <input type="text" name="image2" placeholder="Image URL 2" value={newEntryForm.image2} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                        <input type="text" name="image3" placeholder="Image URL 3" value={newEntryForm.image3} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                      </div>
+
+                      <div className="space-y-8">
+                        <input type="text" name="shortDesc" required placeholder="Short Description *" value={newEntryForm.shortDesc} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
+                        <textarea name="longDesc" placeholder="Long Description / Care Notes..." rows="3" value={newEntryForm.longDesc} onChange={handleNewEntryChange} className="w-full bg-transparent border border-[#1A1A1A]/20 p-4 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40 resize-none"></textarea>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row justify-between items-center gap-8 pt-6 border-t border-[#E5E0D8]">
+                        <div className="flex gap-4 items-center">
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60">Logistics Flag:</span>
+                          <select name="shipping" value={newEntryForm.shipping} onChange={handleNewEntryChange} className="bg-transparent border-b border-[#1A1A1A] pb-1 focus:outline-none text-sm tracking-wider font-medium">
+                            <option value="Standard">Standard (Courier)</option>
+                            <option value="Specialized">Specialized (Fleet)</option>
+                          </select>
+                        </div>
+                        <button type="submit" className="w-full sm:w-auto bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] px-12 py-4 transition-colors flex items-center justify-center gap-2">
+                          Append to Ledger <Plus size={12} strokeWidth={1} />
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: INVENTORY LEDGER */}
+              {adminTab === 'ledger' && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#E5E0D8]">
+                        <th className="font-normal pb-6 pr-8">Designation</th>
+                        <th className="font-normal pb-6 pr-8">Classification</th>
+                        <th className="font-normal pb-6 pr-8">Valuation</th>
+                        <th className="font-normal pb-6 pr-8">Regional Stock Allocation</th>
+                        <th className="font-normal pb-6 text-right">Directives</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm">
+                      {products.map(product => (
+                        <tr key={product.id} className="border-b border-[#E5E0D8] group hover:bg-[#EBE6E0]/50 transition-colors">
+                          <td className="py-6 pr-8 flex items-center gap-6">
+                            <span className="text-2xl bg-[#EBE6E0] w-12 h-12 flex items-center justify-center shrink-0">{product.image}</span>
+                            <span className="font-serif text-lg">{product.name}</span>
+                          </td>
+                          <td className="py-6 pr-8 text-[#1A1A1A]/60 tracking-wider">{product.category.replace("_", " ")}</td>
+                          <td className="py-6 pr-8 tracking-widest">{formatPrice(product.price)}</td>
+                          <td className="py-6 pr-8">
+                            <div className="flex flex-col gap-1 text-xs">
+                              {Object.entries(product.stock || {}).map(([city, qty]) => (
+                                <span key={city} className={qty === 0 ? 'text-[#8B5A2B]' : 'text-[#2C3D30]'}>
+                                  <span className="text-[9px] uppercase tracking-widest opacity-50 mr-2">{city.substring(0,3)}:</span> 
+                                  <strong className="font-medium">{qty}</strong>
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-6 text-right">
+                            <div className="flex justify-end gap-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button className="text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><Edit size={16} strokeWidth={1}/></button>
+                              <button onClick={() => deleteProduct(product.id)} className="text-[#1A1A1A]/40 hover:text-red-900"><Trash2 size={16} strokeWidth={1}/></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* TAB: ORDER MANIFEST */}
+              {adminTab === 'orders' && (
+                <div className="space-y-12 pb-12">
+                  {(!orders || orders.length === 0) ? (
+                    <p className="text-center py-20 text-2xl font-serif text-[#1A1A1A]/40">No orders recorded in the manifest.</p>
+                  ) : (
+                    orders.map(order => (
+                      <div key={order.id} className="border border-[#E5E0D8] bg-white/40 p-8 md:p-12">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 border-b border-[#E5E0D8] pb-6 gap-4">
+                          <div>
+                            <h3 className="text-3xl font-serif">{order.id}</h3>
+                            <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mt-2">{order.date} • {order.city}</p>
+                          </div>
+                          <div className="text-left md:text-right">
+                            <span className="block text-3xl font-serif mb-1">{formatPrice(order.total)}</span>
+                            <span className={`text-[10px] uppercase tracking-[0.3em] font-bold ${order.customer.paymentMethod === 'TRF' ? 'text-[#8B5A2B]' : 'text-[#2C3D30]'}`}>
+                              {order.customer.paymentMethod === 'TRF' ? 'Direct Bank Transfer' : 'Cash on Delivery'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+                          <div className="space-y-6">
+                            <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 border-b border-[#E5E0D8] pb-3">Client Dossier</h4>
+                            <div className="text-sm font-light leading-loose space-y-2 text-[#1A1A1A]/80">
+                              <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Name:</strong> {order.customer.name}</p>
+                              <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Contact:</strong> {order.customer.phone} <span className="mx-2">•</span> {order.customer.email}</p>
+                              <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Address:</strong> {order.customer.address}</p>
+                              
+                              {order.customer.locationLink && (
+                                <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Maps:</strong> 
+                                  <a href={order.customer.locationLink} target="_blank" rel="noreferrer" className="text-blue-700 hover:text-blue-900 underline underline-offset-4 decoration-1">
+                                    View Pinned Location
+                                  </a>
+                                </p>
+                              )}
+                              
+                              {order.customer.instructions && (
+                                <div className="mt-4 bg-[#EBE6E0] p-4 text-xs italic text-[#1A1A1A]/80 border-l border-[#1A1A1A]">
+                                  "{order.customer.instructions}"
+                                </div>
+                              )}
+
+                              {order.customer.paymentMethod === 'TRF' && (
+                                <p className="mt-4 pt-4 border-t border-[#E5E0D8]">
+                                  <strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Attached Receipt:</strong> 
+                                  <span className="text-[#8B5A2B] italic flex items-center gap-2 mt-2">
+                                    📎 {order.customer.receipt || 'Document verified'}
+                                  </span>
+                                </p>
+                              )}
+                            </div>
+                            
+                            {order.requiresCarDelivery && (
+                              <div className="mt-6 border border-[#8B5A2B] text-[#8B5A2B] p-4 text-[10px] uppercase tracking-[0.2em] font-bold flex items-center gap-3 bg-[#8B5A2B]/5">
+                                ⚠️ Requires Specialized Vehicle Fleet
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-6">
+                            <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 border-b border-[#E5E0D8] pb-3">Procured Items</h4>
+                            <ul className="space-y-4">
+                              {order.items.map((item, i) => (
+                                <li key={i} className="flex justify-between items-center text-sm border-b border-[#E5E0D8]/50 pb-4 last:border-0">
+                                  <span className="flex items-center gap-6">
+                                    <span className="text-3xl bg-[#EBE6E0] w-12 h-12 flex items-center justify-center">{item.image}</span>
+                                    <span>
+                                      <span className="block font-serif text-lg">{item.name}</span>
+                                      <span className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50">Qty: {item.qty}</span>
+                                    </span>
+                                  </span>
+                                  <span className="tracking-widest">{formatPrice(item.price * item.qty)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+
+  // ==========================================
+  // RENDER: PUBLIC STOREFRONT
+  // ==========================================
   return (
-    <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A] selection:bg-[#2C3D30] selection:text-[#F7F5F0]" onClick={closeAddMenu}>
+    <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A] selection:bg-[#2C3D30] selection:text-[#F7F5F0]">
       
       {/* REGIONAL GATEWAY */}
       {view === 'city-select' && (
@@ -380,8 +779,8 @@ export default function App() {
         </div>
       )}
 
-      {/* MAIN APPLICATION */}
-      {view !== 'city-select' && view !== 'admin-login' && view !== 'admin-dashboard' && (
+      {/* MAIN APPLICATION (Store, Cart, Guide) */}
+      {view !== 'city-select' && (
         <>
           <nav className={`fixed w-full top-0 z-40 transition-all duration-700 ${isScrolled ? 'bg-[#F7F5F0]/90 backdrop-blur-md py-4' : 'bg-transparent py-8'}`}>
             <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex justify-between items-center">
@@ -398,7 +797,7 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-8">
-                {selectedCity && view !== 'admin-login' && view !== 'admin-dashboard' && (
+                {selectedCity && (
                   <button onClick={() => setView('city-select')} className="hidden md:flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A] transition-colors border-b border-transparent hover:border-[#1A1A1A] pb-0.5">
                     <MapPin size={10} /> {selectedCity}
                   </button>
@@ -852,400 +1251,6 @@ export default function App() {
             </div>
           </footer>
         </>
-      )}
-
-      {/* ISOLATED ADMIN PORTAL */}
-      {(view === 'admin-login' || view === 'admin-dashboard') && (
-        <div className="min-h-screen bg-[#F7F5F0] pt-8">
-            {/* VIEW: ADMIN LOGIN */}
-            {view === 'admin-login' && (
-              <div className="max-w-md mx-auto px-8 py-32 animate-in fade-in duration-[1000ms]">
-                <h2 className="text-4xl font-serif mb-2">Staff Portal.</h2>
-                <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 mb-16 border-b border-[#E5E0D8] pb-8">Authorized Access Only</p>
-                
-                <form onSubmit={handleLogin} className="space-y-8">
-                  <div>
-                    <input 
-                      type="text" 
-                      placeholder="Identification"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider rounded-none transition-colors placeholder:text-[#1A1A1A]/30"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <input 
-                      type="password" 
-                      placeholder="Passcode"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider rounded-none transition-colors placeholder:text-[#1A1A1A]/30"
-                      required
-                    />
-                  </div>
-                  {loginError && <p className="text-red-900 text-[10px] uppercase tracking-[0.2em]">{loginError}</p>}
-                  <button 
-                    type="submit"
-                    className="w-full bg-[#1A1A1A] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 mt-8 hover:bg-[#2C3D30] transition-colors"
-                  >
-                    Authenticate
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* VIEW: ADMIN PANEL */}
-            {view === 'admin-dashboard' && (
-              <div className="max-w-[90rem] mx-auto px-8 md:px-16 animate-in fade-in duration-[1000ms]">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 border-b border-[#1A1A1A] pb-8 gap-8">
-                  <div>
-                    <h2 className="text-5xl font-serif mb-4">Master Ledger</h2>
-                    <div className="flex gap-8 text-[10px] uppercase tracking-[0.3em] mt-4">
-                      <button onClick={() => setAdminTab('ledger')} className={`pb-2 transition-colors ${adminTab === 'ledger' ? 'text-[#1A1A1A] border-b border-[#1A1A1A]' : 'text-[#1A1A1A]/40 hover:text-[#1A1A1A]'}`}>Inventory</button>
-                      <button onClick={() => setAdminTab('orders')} className={`pb-2 transition-colors flex items-center gap-2 ${adminTab === 'orders' ? 'text-[#1A1A1A] border-b border-[#1A1A1A]' : 'text-[#1A1A1A]/40 hover:text-[#1A1A1A]'}`}>
-                        Order Manifest 
-                        {orders && orders.length > 0 && <span className="bg-[#2C3D30] text-[#F7F5F0] px-1.5 py-0.5 rounded-sm">{orders.length}</span>}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex gap-8 items-center">
-                    {adminTab === 'ledger' && (
-                      <div className="relative">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setShowAddMenu(!showAddMenu); }} 
-                          className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] hover:bg-[#2C3D30] px-6 py-3 transition-colors font-medium shadow-sm"
-                        >
-                          <Plus size={12} strokeWidth={2} /> Add <ChevronDown size={12} strokeWidth={2} className={`transition-transform duration-300 ${showAddMenu ? 'rotate-180' : ''}`} />
-                        </button>
-                        
-                        {showAddMenu && (
-                          <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-[#E5E0D8] shadow-xl z-50 flex flex-col py-2 animate-in fade-in zoom-in-95 duration-200">
-                            <button onClick={() => { setShowCityModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/70 hover:text-[#1A1A1A] hover:bg-[#F7F5F0] transition-colors border-b border-[#E5E0D8]/50">
-                              New City Region
-                            </button>
-                            <button onClick={() => { setShowCategoryModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/70 hover:text-[#1A1A1A] hover:bg-[#F7F5F0] transition-colors border-b border-[#E5E0D8]/50">
-                              New Category
-                            </button>
-                            <button onClick={() => { setShowNewEntryModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/70 hover:text-[#1A1A1A] hover:bg-[#F7F5F0] transition-colors border-b border-[#E5E0D8]/50">
-                              New Product Entry
-                            </button>
-                            <button onClick={() => { setShowCSVModal(true); setShowAddMenu(false); }} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] text-[#2C3D30] font-bold hover:bg-[#F7F5F0] transition-colors">
-                              Bulk CSV Upload
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <button onClick={() => { setIsAuthenticated(false); setView('city-select'); if(typeof window !== 'undefined') window.history.pushState({}, '', '/'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
-                      Terminate Session
-                    </button>
-                  </div>
-                </div>
-
-                {/* CSV UPLOAD MODAL */}
-                {showCSVModal && (
-                  <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-in fade-in duration-500">
-                    <div className="bg-white border border-[#1A1A1A] max-w-xl w-full p-12 relative shadow-2xl">
-                      <button onClick={() => setShowCSVModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
-                      
-                      <h3 className="text-3xl font-serif mb-2">Bulk Integration</h3>
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-10 border-b border-[#E5E0D8] pb-6">Upload .CSV catalog file</p>
-                      
-                      <div className="border-2 border-dashed border-[#1A1A1A]/20 bg-[#EBE6E0]/30 hover:bg-[#EBE6E0]/60 transition-colors p-12 text-center relative group">
-                        {isUploadingCSV ? (
-                          <div className="flex flex-col items-center justify-center">
-                            <Loader2 className="animate-spin text-[#2C3D30] mb-4" size={32} strokeWidth={1} />
-                            <span className="text-[10px] uppercase tracking-[0.2em] font-bold">Parsing & Syncing Catalog...</span>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="w-12 h-12 bg-[#1A1A1A] text-[#F7F5F0] rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-                              <Plus size={20} strokeWidth={1} />
-                            </div>
-                            <span className="block text-sm font-medium mb-2">Drag and drop your CSV file here</span>
-                            <span className="block text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-6">or click to browse local files</span>
-                            
-                            <input type="file" accept=".csv" onChange={handleCSVUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                            
-                            <div className="text-left text-xs font-light text-[#1A1A1A]/60 bg-white p-4 border border-[#E5E0D8]">
-                              <strong>Required CSV Headers:</strong><br/>
-                              Name, ImageURL_1, ImageURL_2, ImageURL_3, ShortDesc, LongDesc, Amount, Discount, Sale, Shipping, Category, SubCategory, Stock_Karachi, Stock_Islamabad, Stock_Rawalpindi
-                            </div>
-                            <button onClick={downloadSampleCSV} className="mt-6 text-[10px] uppercase tracking-[0.2em] text-[#2C3D30] font-bold hover:opacity-50 transition-opacity underline underline-offset-4">
-                              Download Sample File
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* NEW CITY MODAL */}
-                {showCityModal && (
-                  <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-in fade-in duration-500">
-                    <div className="bg-white border border-[#1A1A1A] max-w-md w-full p-12 relative shadow-2xl">
-                      <button onClick={() => setShowCityModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
-                      
-                      <h3 className="text-3xl font-serif mb-2">New Region</h3>
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-10 border-b border-[#E5E0D8] pb-6">Add a city to delivery logistics</p>
-                      
-                      <form onSubmit={submitNewCity}>
-                        <input 
-                          type="text" 
-                          required 
-                          placeholder="City Name (e.g., Lahore)" 
-                          value={newCityName} 
-                          onChange={(e) => setNewCityName(e.target.value)} 
-                          className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 mb-8 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" 
-                        />
-                        <button type="submit" className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-4 transition-colors flex items-center justify-center gap-2">
-                          Add Location <Plus size={12} strokeWidth={1} />
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                )}
-
-                {/* NEW CATEGORY MODAL */}
-                {showCategoryModal && (
-                  <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-in fade-in duration-500">
-                    <div className="bg-white border border-[#1A1A1A] max-w-md w-full p-12 relative shadow-2xl">
-                      <button onClick={() => setShowCategoryModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
-                      
-                      <h3 className="text-3xl font-serif mb-2">New Category</h3>
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-10 border-b border-[#E5E0D8] pb-6">Expand your catalog taxonomy</p>
-                      
-                      <form onSubmit={submitNewCategory}>
-                        <input 
-                          type="text" 
-                          required 
-                          placeholder="Category Name (e.g., Rare Succulents)" 
-                          value={newCategoryName} 
-                          onChange={(e) => setNewCategoryName(e.target.value)} 
-                          className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 mb-8 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" 
-                        />
-                        <button type="submit" className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-4 transition-colors flex items-center justify-center gap-2">
-                          Create Category <Plus size={12} strokeWidth={1} />
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                )}
-
-                {/* SINGLE NEW ENTRY MODAL */}
-                {showNewEntryModal && (
-                  <div className="fixed inset-0 bg-[#F7F5F0]/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-8 overflow-y-auto animate-in fade-in duration-500">
-                    <div className="bg-white border border-[#1A1A1A] max-w-4xl w-full p-8 md:p-12 relative shadow-2xl my-auto">
-                      <button onClick={() => setShowNewEntryModal(false)} className="absolute top-6 right-6 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Close ✕</button>
-                      
-                      <h3 className="text-3xl font-serif mb-2">New Botanical Entry</h3>
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-8 border-b border-[#E5E0D8] pb-6">Individual Catalog Addition</p>
-                      
-                      <form onSubmit={submitNewEntry} className="space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                          <input type="text" name="name" required placeholder="Product Name *" value={newEntryForm.name} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                          
-                          <div className="flex gap-4">
-                            <select name="category" value={newEntryForm.category} onChange={handleNewEntryChange} className="w-1/2 bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light text-[#1A1A1A]/60">
-                              {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                            <input type="text" name="subCategory" placeholder="Sub-Category" value={newEntryForm.subCategory} onChange={handleNewEntryChange} className="w-1/2 bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-8">
-                          <input type="number" name="amount" required placeholder="Amount (PKR) *" value={newEntryForm.amount} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                          
-                          <div className="flex items-center gap-8">
-                            <input type="number" name="discount" placeholder="Discount %" value={newEntryForm.discount} onChange={handleNewEntryChange} className="w-1/2 bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                            <div className="flex items-center gap-3 border-b border-[#1A1A1A]/20 pb-3 w-1/2">
-                              <input type="checkbox" name="sale" checked={newEntryForm.sale} onChange={handleNewEntryChange} id="sale-checkbox" className="w-4 h-4 accent-[#1A1A1A]" />
-                              <label htmlFor="sale-checkbox" className="text-sm tracking-wider font-light text-[#1A1A1A]/60 cursor-pointer">Active Sale</label>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Dynamic City Stock Inputs */}
-                        <div className="space-y-4">
-                          <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60">Regional Inventory Configuration</label>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 bg-[#EBE6E0]/50 p-6 border border-[#E5E0D8]">
-                            {cities.map(city => (
-                              <div key={city}>
-                                <input 
-                                  type="number" 
-                                  name={`stock_${city}`} 
-                                  placeholder={`${city} Qty *`} 
-                                  required 
-                                  value={newEntryForm.stock[city] !== undefined ? newEntryForm.stock[city] : ''} 
-                                  onChange={handleNewEntryChange} 
-                                  className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-medium placeholder:text-[#1A1A1A]/30" 
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                          <input type="text" name="image1" placeholder="Image URL 1 / Emoji *" required value={newEntryForm.image1} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                          <input type="text" name="image2" placeholder="Image URL 2" value={newEntryForm.image2} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                          <input type="text" name="image3" placeholder="Image URL 3" value={newEntryForm.image3} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                        </div>
-
-                        <div className="space-y-8">
-                          <input type="text" name="shortDesc" required placeholder="Short Description *" value={newEntryForm.shortDesc} onChange={handleNewEntryChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40" />
-                          <textarea name="longDesc" placeholder="Long Description / Care Notes..." rows="3" value={newEntryForm.longDesc} onChange={handleNewEntryChange} className="w-full bg-transparent border border-[#1A1A1A]/20 p-4 focus:outline-none focus:border-[#1A1A1A] text-sm tracking-wider font-light placeholder:text-[#1A1A1A]/40 resize-none"></textarea>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row justify-between items-center gap-8 pt-6 border-t border-[#E5E0D8]">
-                          <div className="flex gap-4 items-center">
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60">Logistics Flag:</span>
-                            <select name="shipping" value={newEntryForm.shipping} onChange={handleNewEntryChange} className="bg-transparent border-b border-[#1A1A1A] pb-1 focus:outline-none text-sm tracking-wider font-medium">
-                              <option value="Standard">Standard (Courier)</option>
-                              <option value="Specialized">Specialized (Fleet)</option>
-                            </select>
-                          </div>
-                          <button type="submit" className="w-full sm:w-auto bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] px-12 py-4 transition-colors flex items-center justify-center gap-2">
-                            Append to Ledger <Plus size={12} strokeWidth={1} />
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB: INVENTORY LEDGER */}
-                {adminTab === 'ledger' && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#E5E0D8]">
-                          <th className="font-normal pb-6 pr-8">Designation</th>
-                          <th className="font-normal pb-6 pr-8">Classification</th>
-                          <th className="font-normal pb-6 pr-8">Valuation</th>
-                          <th className="font-normal pb-6 pr-8">Regional Stock Allocation</th>
-                          <th className="font-normal pb-6 text-right">Directives</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-sm">
-                        {products.map(product => (
-                          <tr key={product.id} className="border-b border-[#E5E0D8] group hover:bg-[#EBE6E0]/50 transition-colors">
-                            <td className="py-6 pr-8 flex items-center gap-6">
-                              <span className="text-2xl bg-[#EBE6E0] w-12 h-12 flex items-center justify-center shrink-0">{product.image}</span>
-                              <span className="font-serif text-lg">{product.name}</span>
-                            </td>
-                            <td className="py-6 pr-8 text-[#1A1A1A]/60 tracking-wider">{product.category.replace("_", " ")}</td>
-                            <td className="py-6 pr-8 tracking-widest">{formatPrice(product.price)}</td>
-                            <td className="py-6 pr-8">
-                              <div className="flex flex-col gap-1 text-xs">
-                                {Object.entries(product.stock || {}).map(([city, qty]) => (
-                                  <span key={city} className={qty === 0 ? 'text-[#8B5A2B]' : 'text-[#2C3D30]'}>
-                                    <span className="text-[9px] uppercase tracking-widest opacity-50 mr-2">{city.substring(0,3)}:</span> 
-                                    <strong className="font-medium">{qty}</strong>
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="py-6 text-right">
-                              <div className="flex justify-end gap-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button className="text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><Edit size={16} strokeWidth={1}/></button>
-                                <button onClick={() => deleteProduct(product.id)} className="text-[#1A1A1A]/40 hover:text-red-900"><Trash2 size={16} strokeWidth={1}/></button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {/* TAB: ORDER MANIFEST */}
-                {adminTab === 'orders' && (
-                  <div className="space-y-12 pb-12">
-                    {(!orders || orders.length === 0) ? (
-                      <p className="text-center py-20 text-2xl font-serif text-[#1A1A1A]/40">No orders recorded in the manifest.</p>
-                    ) : (
-                      orders.map(order => (
-                        <div key={order.id} className="border border-[#E5E0D8] bg-white/40 p-8 md:p-12">
-                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 border-b border-[#E5E0D8] pb-6 gap-4">
-                            <div>
-                              <h3 className="text-3xl font-serif">{order.id}</h3>
-                              <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mt-2">{order.date} • {order.city}</p>
-                            </div>
-                            <div className="text-left md:text-right">
-                              <span className="block text-3xl font-serif mb-1">{formatPrice(order.total)}</span>
-                              <span className={`text-[10px] uppercase tracking-[0.3em] font-bold ${order.customer.paymentMethod === 'TRF' ? 'text-[#8B5A2B]' : 'text-[#2C3D30]'}`}>
-                                {order.customer.paymentMethod === 'TRF' ? 'Direct Bank Transfer' : 'Cash on Delivery'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
-                            <div className="space-y-6">
-                              <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 border-b border-[#E5E0D8] pb-3">Client Dossier</h4>
-                              <div className="text-sm font-light leading-loose space-y-2 text-[#1A1A1A]/80">
-                                <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Name:</strong> {order.customer.name}</p>
-                                <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Contact:</strong> {order.customer.phone} <span className="mx-2">•</span> {order.customer.email}</p>
-                                <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Address:</strong> {order.customer.address}</p>
-                                
-                                {order.customer.locationLink && (
-                                  <p><strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Maps:</strong> 
-                                    <a href={order.customer.locationLink} target="_blank" rel="noreferrer" className="text-blue-700 hover:text-blue-900 underline underline-offset-4 decoration-1">
-                                      View Pinned Location
-                                    </a>
-                                  </p>
-                                )}
-                                
-                                {order.customer.instructions && (
-                                  <div className="mt-4 bg-[#EBE6E0] p-4 text-xs italic text-[#1A1A1A]/80 border-l border-[#1A1A1A]">
-                                    "{order.customer.instructions}"
-                                  </div>
-                                )}
-
-                                {order.customer.paymentMethod === 'TRF' && (
-                                  <p className="mt-4 pt-4 border-t border-[#E5E0D8]">
-                                    <strong className="font-medium text-[#1A1A1A] uppercase text-[10px] tracking-[0.2em] mr-2">Attached Receipt:</strong> 
-                                    <span className="text-[#8B5A2B] italic flex items-center gap-2 mt-2">
-                                      📎 {order.customer.receipt || 'Document verified'}
-                                    </span>
-                                  </p>
-                                )}
-                              </div>
-                              
-                              {order.requiresCarDelivery && (
-                                <div className="mt-6 border border-[#8B5A2B] text-[#8B5A2B] p-4 text-[10px] uppercase tracking-[0.2em] font-bold flex items-center gap-3 bg-[#8B5A2B]/5">
-                                  ⚠️ Requires Specialized Vehicle Fleet
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="space-y-6">
-                              <h4 className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 border-b border-[#E5E0D8] pb-3">Procured Items</h4>
-                              <ul className="space-y-4">
-                                {order.items.map((item, i) => (
-                                  <li key={i} className="flex justify-between items-center text-sm border-b border-[#E5E0D8]/50 pb-4 last:border-0">
-                                    <span className="flex items-center gap-6">
-                                      <span className="text-3xl bg-[#EBE6E0] w-12 h-12 flex items-center justify-center">{item.image}</span>
-                                      <span>
-                                        <span className="block font-serif text-lg">{item.name}</span>
-                                        <span className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50">Qty: {item.qty}</span>
-                                      </span>
-                                    </span>
-                                    <span className="tracking-widest">{formatPrice(item.price * item.qty)}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-        </div>
       )}
     </div>
   );
