@@ -2,12 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { Plus, ArrowLeft, Check, Lock, MoveRight, MapPin, Map, RefreshCw, X } from 'lucide-react';
 
 const API_BASE = `http://${window.location.hostname}:5005/api`;
-
 const formatPrice = (price) => `PKR ${Number(price).toLocaleString()}`;
 
+// --- BULLETPROOF URL ROUTER ---
+// This forces the app to read the URL *before* anything renders.
+const getInitialView = () => {
+  if (window.location.pathname.includes('admin')) return 'admin-login';
+  if (localStorage.getItem('pc_selected_city')) return 'store';
+  return 'city-select';
+};
+
 export default function App() {
-  const [view, setView] = useState('city-select'); 
-  const [selectedCity, setSelectedCity] = useState(null);
+  // Initialize state based on the URL immediately
+  const [view, setView] = useState(getInitialView()); 
+  const [selectedCity, setSelectedCity] = useState(localStorage.getItem('pc_selected_city') || null);
   
   const [cities, setCities] = useState(["Islamabad", "Karachi"]);
   const [products, setProducts] = useState([]);
@@ -30,19 +38,16 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('ledger'); 
   const [isFetchingOrders, setIsFetchingOrders] = useState(false);
   
-  // Missing Modals State
+  // Modals & Forms
   const [showNewEntryModal, setShowNewEntryModal] = useState(false);
   const [showCSVModal, setShowCSVModal] = useState(false);
-  
-  // Taxonomy State
   const [newCityName, setNewCityName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
-
   const [newEntryForm, setNewEntryForm] = useState({
     name: '', category: 'Indoor Plant', price: '', stockKHI: '', image: '🪴', desc: ''
   });
 
-  // --- FETCH INITIAL DATA (With Safety Nets Restored!) ---
+  // --- FETCH INITIAL DATA ---
   useEffect(() => {
     fetch(`${API_BASE}/catalog`)
       .then(res => res.json())
@@ -71,18 +76,7 @@ export default function App() {
     if (isAuthenticated && adminTab === 'orders') fetchOrders();
   }, [isAuthenticated, adminTab]);
 
-  // --- URL INTERCEPTOR & SESSION STORAGE ---
   useEffect(() => {
-    const savedCity = localStorage.getItem('pc_selected_city');
-    const currentPath = window.location.pathname;
-
-    if (currentPath.includes('admin')) {
-      setView('admin-login');
-    } else if (savedCity) { 
-      setSelectedCity(savedCity); 
-      setView('store'); 
-    }
-    
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
@@ -230,7 +224,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A]">
       
-      {/* REGIONAL GATEWAY */}
       {view === 'city-select' && (
         <div className="min-h-screen flex flex-col items-center justify-center animate-in fade-in duration-[1500ms] p-8">
           <div className="text-center max-w-xl w-full">
@@ -272,7 +265,6 @@ export default function App() {
 
           <main className="pt-32 pb-24 min-h-[80vh]">
             
-            {/* STOREFRONT */}
             {view === 'store' && (
               <div className="animate-in fade-in duration-[1000ms]">
                 <div className="max-w-[90rem] mx-auto px-8 md:px-16 mb-24 pt-12"><h1 className="text-5xl md:text-8xl font-serif leading-[1.1] tracking-tight mb-8">Cultivated <br className="hidden md:block"/>for the modern sanctuary.</h1><div className="w-full h-[1px] bg-[#E5E0D8]"></div></div>
@@ -314,7 +306,6 @@ export default function App() {
               </div>
             )}
 
-            {/* PRODUCT DETAIL */}
             {view === 'product-detail' && selectedProduct && (
               <div className="max-w-[90rem] mx-auto px-8 md:px-16 animate-in fade-in">
                 <button onClick={() => setView('store')} className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60 hover:text-[#1A1A1A] mb-12 border-b border-transparent hover:border-[#1A1A1A] pb-1 w-fit"><ArrowLeft size={12} strokeWidth={1} /> Back</button>
@@ -333,7 +324,6 @@ export default function App() {
               </div>
             )}
 
-            {/* CART */}
             {view === 'cart' && (
               <div className="max-w-5xl mx-auto px-8 md:px-16 animate-in fade-in">
                 <div className="mb-16 border-b border-[#1A1A1A] pb-8 flex justify-between items-end"><h2 className="text-5xl font-serif mb-4">Your Order</h2><button onClick={() => setView('store')} className="text-[10px] uppercase tracking-[0.2em] hover:opacity-50">Return</button></div>
@@ -363,7 +353,6 @@ export default function App() {
               </div>
             )}
 
-            {/* CHECKOUT */}
             {view === 'checkout' && (
               <div className="max-w-5xl mx-auto px-8 md:px-16 animate-in fade-in">
                 <h2 className="text-5xl font-serif mb-16 border-b border-[#1A1A1A] pb-8">Logistics</h2>
@@ -387,7 +376,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ORDER SUCCESS */}
             {view === 'order-success' && currentOrder && (
               <div className="max-w-2xl mx-auto px-8 py-32 text-center animate-in fade-in">
                 <div className="flex justify-center mb-12"><BrandLogo /></div>
@@ -398,7 +386,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ADMIN LOGIN */}
             {view === 'admin-login' && (
               <div className="max-w-md mx-auto px-8 py-32">
                 <h2 className="text-4xl font-serif mb-2">Staff Portal.</h2>
@@ -410,7 +397,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ADMIN DASHBOARD */}
             {view === 'admin-dashboard' && (
               <div className="max-w-[90rem] mx-auto px-8 md:px-16 animate-in fade-in">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 border-b border-[#1A1A1A] pb-8 gap-6">
@@ -431,7 +417,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* TAB: CATEGORIES */}
                 {adminTab === 'categories' && (
                   <div className="max-w-3xl animate-in fade-in">
                     <form onSubmit={submitNewCategory} className="mb-12 flex gap-4">
@@ -442,125 +427,4 @@ export default function App() {
                       {categories.map(cat => (
                         <div key={cat} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8]">
                           <span className="text-lg font-serif">{cat}</span>
-                          <button onClick={() => deleteCategory(cat)} className="text-[10px] uppercase tracking-[0.2em] text-red-900 hover:text-red-700">Remove</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB: CITIES */}
-                {adminTab === 'cities' && (
-                  <div className="max-w-3xl animate-in fade-in">
-                    <form onSubmit={submitNewCity} className="mb-12 flex gap-4">
-                      <input type="text" placeholder="New Region Name..." value={newCityName} onChange={e => setNewCityName(e.target.value)} className="flex-1 bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none" required/>
-                      <button type="submit" className="bg-[#1A1A1A] text-white px-8 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30]">Add Region</button>
-                    </form>
-                    <div className="space-y-4">
-                      {cities.map(city => (
-                        <div key={city} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8] shadow-sm">
-                          <span className="text-lg font-serif">{city}</span>
-                          <button onClick={() => deleteCity(city)} className="text-[10px] uppercase tracking-[0.2em] text-red-900 hover:text-red-700">Remove</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB: ORDERS */}
-                {adminTab === 'orders' && (
-                  <div className="space-y-12 animate-in fade-in">
-                    <div className="flex justify-between items-center mb-8 border-b border-[#E5E0D8] pb-4">
-                      <h3 className="text-2xl font-serif text-[#1A1A1A]/50">Recent Transactions</h3>
-                      <button onClick={fetchOrders} className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] hover:bg-[#1A1A1A] hover:text-[#F7F5F0] px-6 py-3 transition-colors">
-                        <RefreshCw size={12} className={isFetchingOrders ? "animate-spin" : ""} /> {isFetchingOrders ? 'Syncing...' : 'Fetch Data'}
-                      </button>
-                    </div>
-                    {orders.length === 0 ? ( <p className="text-[#1A1A1A]/40 text-sm tracking-widest text-center py-12">No orders found.</p> ) : (
-                      orders.map(order => (
-                        <div key={order.orderNumber || order.id} className="bg-white p-8 border border-[#E5E0D8] shadow-sm">
-                          <h3 className="text-2xl font-serif mb-4">{order.orderNumber || order.id} <span className="text-sm tracking-widest text-[#1A1A1A]/50 float-right">{formatPrice(order.totalAmount || order.total)}</span></h3>
-                          <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Client:</strong> {order.customer?.name} | {order.customer?.phone} | {order.city}</p>
-                          <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Items:</strong> {order.items?.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {/* TAB: LEDGER */}
-                {adminTab === 'ledger' && (
-                  <table className="w-full text-left text-sm animate-in fade-in">
-                    <thead><tr className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#E5E0D8]"><th className="pb-6">Designation</th><th className="pb-6">Valuation</th><th className="pb-6 text-right">Actions</th></tr></thead>
-                    <tbody>
-                      {products.map(p => (
-                        <tr key={p.id || p._id} className="border-b border-[#E5E0D8] hover:bg-white transition-colors">
-                          <td className="py-6 font-serif text-lg px-2">{p.name} <span className="text-[10px] uppercase tracking-widest text-[#1A1A1A]/40 ml-4 hidden md:inline">{p.category.replace("_", " ")}</span></td>
-                          <td className="py-6 tracking-widest">{formatPrice(p.price)}</td>
-                          <td className="py-6 text-right px-2"><button onClick={() => deleteProduct(p.id || p._id)} className="text-red-900 text-[10px] uppercase tracking-[0.2em] hover:text-red-700">Delete</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-          </main>
-
-          <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
-            <div className="max-w-[90rem] mx-auto px-8 flex justify-between items-center">
-              <div className="flex flex-col items-center md:items-start shrink-0"><BrandLogo /><span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50 mt-1">Plants & Ceramics</span></div>
-              <button onClick={() => setView('admin-login')} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Staff Portal</button>
-            </div>
-          </footer>
-
-          {/* MISSING MODALS RESTORED HERE */}
-          
-          {/* 1. ADD PRODUCT MODAL */}
-          {showNewEntryModal && (
-            <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-              <div className="bg-[#F7F5F0] p-12 max-w-2xl w-full border border-[#E5E0D8] shadow-2xl relative">
-                <button onClick={() => setShowNewEntryModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
-                <h2 className="text-4xl font-serif mb-8 border-b border-[#1A1A1A]/10 pb-4">New Product.</h2>
-                <form onSubmit={submitNewEntry} className="space-y-6">
-                  <div className="grid grid-cols-2 gap-6">
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Name</label><input type="text" required onChange={e=>setNewEntryForm({...newEntryForm, name: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" /></div>
-                    <div>
-                      <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Category</label>
-                      <select onChange={e=>setNewEntryForm({...newEntryForm, category: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none">
-                        {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-6">
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Price (PKR)</label><input type="number" required onChange={e=>setNewEntryForm({...newEntryForm, price: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Stock (Karachi)</label><input type="number" required onChange={e=>setNewEntryForm({...newEntryForm, stockKHI: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Image Emoji/URL</label><input type="text" defaultValue="🪴" onChange={e=>setNewEntryForm({...newEntryForm, image: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                  </div>
-                  <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Description</label><textarea required onChange={e=>setNewEntryForm({...newEntryForm, desc: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none h-24" /></div>
-                  <button type="submit" className="w-full bg-[#1A1A1A] text-white py-4 text-[10px] uppercase tracking-[0.3em] hover:bg-[#2C3D30] transition-colors mt-8">Add to Ledger</button>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* 2. CSV UPLOAD MODAL */}
-          {showCSVModal && (
-            <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-              <div className="bg-[#F7F5F0] p-12 max-w-xl w-full border border-[#E5E0D8] shadow-2xl relative text-center">
-                 <button onClick={() => setShowCSVModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
-                 <h2 className="text-4xl font-serif mb-4">Bulk Import.</h2>
-                 <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-8">Upload a CSV file to inject multiple products instantly.</p>
-                 <div className="border-2 border-dashed border-[#1A1A1A]/20 p-12 hover:border-[#1A1A1A] transition-colors relative cursor-pointer">
-                    <input type="file" accept=".csv" onChange={handleCSVUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                    <span className="text-sm font-medium">Click to Browse or Drag CSV Here</span>
-                 </div>
-              </div>
-            </div>
-          )}
-
-        </>
-      )}
-    </div>
-  );
-}
+                          <button onClick={() => deleteCategory(cat)} className="text-[10px] uppercase tracking-[0.2em] text-red-900 hover:text-red-7
