@@ -163,11 +163,10 @@ export default function App() {
     }
     setOrders(prev => [newOrder, ...prev]);
 
-    // 2. Automated Email (EmailJS)
     const emailParams = {
-      service_id: 'YOUR_SERVICE_ID', 
-      template_id: 'YOUR_TEMPLATE_ID',
-      user_id: 'YOUR_PUBLIC_KEY',
+      service_id: 'service_hyfp919',  // Your exact Service ID
+      template_id: 'template_nlst9qp', // Your exact Template ID
+      user_id: 'YOUR_PUBLIC_KEY', // <-- Paste your Public Key here!
       template_params: {
         order_number: orderNum,
         customer_name: checkoutForm.name,
