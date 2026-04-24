@@ -1,11 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ShoppingBag, ShieldUser, Plus, Trash2, Edit, Leaf, ArrowLeft, Check, BookOpen, Search, Camera, Lock, Loader2, MoveRight, ArrowUpRight, MapPin, ChevronDown, Map } from 'lucide-react';
+import { ShoppingBag, ShieldUser, Plus, Trash2, Edit, Leaf, ArrowLeft, Check, BookOpen, Search, Camera, Lock, Loader2, MoveRight, ArrowUpRight, MapPin, ChevronDown, Map, RefreshCw } from 'lucide-react';
 
-// --- API CONFIGURATION ---
-// This points to your Node.js backend running on Port 5005 on your VPS.
 const API_BASE = `http://${window.location.hostname}:5005/api`;
 
-// Mock fallbacks in case the backend is offline
 const fallbackProducts = [
   { id: 1, name: "Chili Plant", category: "Vegetable Plant", price: 400, stock: { "Karachi": 15, "Islamabad": 10 }, isBykeaEligible: true, image: "🌶️", desc: "Spicy green chilies.", longDesc: "A prolific producer of spicy green chilies. Perfect for sunny balconies." },
   { id: 2, name: "Large Mango Tree", category: "Fruit Plant", price: 4500, stock: { "Karachi": 5 }, isBykeaEligible: false, image: "🌳", desc: "Grafted tree. Requires car delivery.", longDesc: "A beautiful, established grafted mango tree ready to be planted in your garden." },
@@ -19,11 +16,9 @@ const fallbackGuides = [
 const formatPrice = (price) => `PKR ${Number(price).toLocaleString()}`;
 
 export default function App() {
-  // --- Navigation & Core State ---
   const [view, setView] = useState('city-select'); 
   const [selectedCity, setSelectedCity] = useState(null);
   
-  // Data State (Fetched from Backend)
   const [cities, setCities] = useState(["Islamabad", "Karachi", "Rawalpindi"]);
   const [products, setProducts] = useState(fallbackProducts);
   const [categories, setCategories] = useState(["All", "Indoor Plant", "Outdoor Plant", "Ceramic Pot", "Fruit Plant", "Vegetable Plant"]);
@@ -35,42 +30,32 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState(null); 
   const [visibleCount, setVisibleCount] = useState(6);
 
-  // --- Order & Checkout State ---
   const [orders, setOrders] = useState([]);
   const [currentOrder, setCurrentOrder] = useState(null);
   const [checkoutForm, setCheckoutForm] = useState({
     name: '', email: '', phone: '', address: '', locationLink: '', instructions: '', paymentMethod: 'COD', receipt: null
   });
 
-  // --- Admin State ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [adminTab, setAdminTab] = useState('ledger'); // 'ledger', 'orders', 'cities'
+  const [adminTab, setAdminTab] = useState('ledger'); 
   const [showAddMenu, setShowAddMenu] = useState(false); 
+  const [isFetchingOrders, setIsFetchingOrders] = useState(false);
   
-  // Modals & Forms
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState(false);
-  
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
+  const [showNewEntryModal, setShowNewEntryModal] = useState(false);
   
   const [showCityModal, setShowCityModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
   const [editingCity, setEditingCity] = useState(null);
   const [editCityName, setEditCityName] = useState('');
 
-  const [showNewEntryModal, setShowNewEntryModal] = useState(false);
   const [newEntryForm, setNewEntryForm] = useState({
     name: '', image1: '', shortDesc: '', longDesc: '', amount: '', discount: '', sale: false, shipping: 'Standard', category: 'Indoor Plant', stock: {}
   });
 
-  const [guideSearch, setGuideSearch] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const fileInputRef = useRef(null);
-
-  // --- 1. FETCH INITIAL DATA FROM BACKEND ---
   useEffect(() => {
     fetch(`${API_BASE}/catalog`)
       .then(res => res.json())
@@ -82,17 +67,27 @@ export default function App() {
       .catch(err => console.error("Backend offline, using fallback memory.", err));
   }, []);
 
-  // Fetch Orders when Admin Logs In
+  const fetchOrders = async () => {
+    setIsFetchingOrders(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/orders`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setOrders(data);
+      alert("✅ Latest orders fetched from the database!");
+    } catch (err) {
+      alert("⚠️ Error fetching data! Make sure Port 5005 is open on your firewall.");
+      console.error("Failed to fetch orders", err);
+    }
+    setTimeout(() => setIsFetchingOrders(false), 500); 
+  };
+
   useEffect(() => {
     if (isAuthenticated && adminTab === 'orders') {
-      fetch(`${API_BASE}/admin/orders`)
-        .then(res => res.json())
-        .then(data => setOrders(data))
-        .catch(err => console.error("Failed to fetch orders", err));
+      fetchOrders();
     }
   }, [isAuthenticated, adminTab]);
 
-  // Handle Session Storage
   useEffect(() => {
     const savedCity = localStorage.getItem('pc_selected_city');
     if (savedCity) {
@@ -106,13 +101,11 @@ export default function App() {
 
   const closeAddMenu = () => setShowAddMenu(false);
 
-  // --- Derived State ---
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const requiresCarDelivery = cart.some(item => !item.isBykeaEligible);
   const filteredProducts = activeCategory === "All" ? products : products.filter(p => p.category === activeCategory);
   const getCityStock = (product, city = selectedCity) => product.stock?.[city] || 0;
 
-  // --- Logic Handlers ---
   const handleCitySelect = (city) => {
     setSelectedCity(city);
     localStorage.setItem('pc_selected_city', city);
@@ -134,10 +127,8 @@ export default function App() {
   };
 
   const removeFromCart = (id) => setCart(prev => prev.filter(item => item.id !== id && item._id !== id));
-
   const handleCheckoutChange = (e) => setCheckoutForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  // --- 2. SUBMIT ORDER TO BACKEND, WHATSAPP & EMAILJS ---
   const submitOrder = async (e) => {
     e.preventDefault();
     const orderNum = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -151,22 +142,22 @@ export default function App() {
       city: selectedCity
     };
 
-    // 1. Send to Backend Database
     try {
-      await fetch(`${API_BASE}/orders`, {
+      const dbRes = await fetch(`${API_BASE}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newOrder)
       });
+      if (!dbRes.ok) throw new Error("Database rejected order");
     } catch (err) {
-      console.error("Order API failed, saving to local state", err);
+      console.error("Order API failed, saving to local state only", err);
     }
     setOrders(prev => [newOrder, ...prev]);
 
     const emailParams = {
-      service_id: 'service_hyfp919',  // Your exact Service ID
-      template_id: 'template_nlst9qp', // Your exact Template ID
-      user_id: 'YOUR_PUBLIC_KEY', // <-- Paste your Public Key here!
+      service_id: 'service_hyfp919', 
+      template_id: 'template_nlst9qp',
+      user_id: 'YOUR_PUBLIC_KEY', 
       template_params: {
         order_number: orderNum,
         customer_name: checkoutForm.name,
@@ -183,9 +174,8 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(emailParams)
-    }).catch(err => console.log("EmailJS not configured yet."));
+    }).catch(err => console.log("EmailJS error", err));
 
-    // 3. WhatsApp Redirect
     const waText = encodeURIComponent(
       `🌿 *New P&C Order: ${orderNum}*\n\n` +
       `*Client:* ${checkoutForm.name}\n` +
@@ -195,7 +185,8 @@ export default function App() {
       `*Total:* ${formatPrice(cartTotal)}\n` +
       `*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`
     );
-    window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); // REPLACE WITH YOUR NUMBER
+    
+    window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); 
 
     setCurrentOrder(newOrder);
     setCart([]);
@@ -221,19 +212,22 @@ export default function App() {
     }
   };
 
-  // --- 3. ADMIN CITY MANAGEMENT ---
   const submitNewCity = async (e) => {
     e.preventDefault();
     const c = newCityName.trim();
     if (c && !cities.includes(c)) {
       setCities(prev => [...prev, c].sort());
       try {
-        await fetch(`${API_BASE}/admin/cities`, {
+        const res = await fetch(`${API_BASE}/admin/cities`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: c })
         });
-      } catch (err) {}
+        if (!res.ok) throw new Error("Server failed");
+        alert(`✅ Success! Region "${c}" has been securely added to the database.`);
+      } catch (err) {
+        alert(`⚠️ Could not save to database! The firewall might be blocking Port 5005.`);
+      }
     }
     setNewCityName('');
   };
@@ -247,6 +241,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newName: editCityName })
       });
+      alert(`✅ Region renamed to "${editCityName}"`);
     } catch (err) {}
     setEditingCity(null);
   };
@@ -255,10 +250,10 @@ export default function App() {
     setCities(prev => prev.filter(c => c !== cityName));
     try {
       await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' });
+      alert(`🗑️ Region "${cityName}" deleted from database.`);
     } catch (err) {}
   };
 
-  // --- 4. ADMIN PRODUCT MANAGEMENT ---
   const submitNewEntry = async (e) => {
     e.preventDefault();
     const initializedStock = { ...newEntryForm.stock };
@@ -282,57 +277,26 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProduct)
       });
+      alert(`✅ Product "${newProduct.name}" added to ledger.`);
     } catch (err) {}
     setShowNewEntryModal(false);
-  };
-
-  const handleCSVUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setIsUploadingCSV(true);
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const text = event.target.result;
-        const rows = text.split('\n').slice(1);
-        const parsedProducts = rows.map(row => {
-          const cols = row.split(',');
-          if(cols.length < 5) return null;
-          return {
-            name: cols[0],
-            imageUrls: [cols[1] || '🌿'],
-            shortDesc: cols[4],
-            price: Number(cols[6]) || 0,
-            category: cols[10] || 'Indoor Plant',
-            isBykeaEligible: true,
-            stock: { "Karachi": Number(cols[12]) || 0 }
-          };
-        }).filter(Boolean);
-
-        setProducts(prev => [...parsedProducts, ...prev]);
-        try {
-          await fetch(`${API_BASE}/admin/products/bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ products: parsedProducts })
-          });
-        } catch(err) {}
-
-        setIsUploadingCSV(false);
-        setShowCSVModal(false);
-      };
-      reader.readAsText(file);
-    }
   };
 
   const deleteProduct = async (id) => {
     setProducts(prev => prev.filter(p => p.id !== id && p._id !== id));
     try {
       await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' });
+      alert(`🗑️ Product deleted.`);
     } catch(err) {}
   };
 
+  /* ---- LOGO COMPONENT (Matches Favicon perfectly) ---- */
+  const BrandLogo = () => (
+    <div className="flex items-center gap-2 text-3xl font-serif text-[#1A1A1A] font-medium tracking-tighter">
+      <span className="text-3xl drop-shadow-sm text-green-700">🌿</span> P&C.
+    </div>
+  );
 
-  // --- RENDER ---
   return (
     <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A] selection:bg-[#2C3D30] selection:text-[#F7F5F0]" onClick={closeAddMenu}>
       
@@ -340,8 +304,8 @@ export default function App() {
       {view === 'city-select' && (
         <div className="min-h-screen flex flex-col items-center justify-center animate-in fade-in duration-[1500ms] p-8">
           <div className="text-center max-w-xl w-full">
-            <Leaf size={40} strokeWidth={0.5} className="mx-auto mb-12 text-[#2C3D30]" />
-            <h1 className="text-4xl md:text-6xl font-serif leading-[1.1] tracking-tight mb-6">Select your region.</h1>
+            <BrandLogo />
+            <h1 className="text-4xl md:text-6xl font-serif leading-[1.1] tracking-tight mb-6 mt-8">Select your region.</h1>
             <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-16 border-b border-[#E5E0D8] pb-8">We curate specific logistics and inventory for each territory.</p>
             
             <div className="flex flex-col gap-4">
@@ -377,14 +341,13 @@ export default function App() {
                 <button onClick={() => setView('plant-guide')} className={`hover:text-[#1A1A1A] transition-colors ${view === 'plant-guide' && 'text-[#1A1A1A]'}`}>Guide</button>
               </div>
 
-              {/* LUXURY CODED LOGO */}
+              {/* FAVICON MATCHING LOGO - NAVBAR */}
               <div 
                 className="absolute left-1/2 -translate-x-1/2 cursor-pointer flex flex-col items-center justify-center group"
                 onClick={() => setView('store')}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-3xl group-hover:-rotate-12 transition-transform duration-500">🌿</span>
-                  <span className="text-2xl md:text-3xl font-serif tracking-tighter text-[#1A1A1A]">P&C.</span>
+                <div className="group-hover:-translate-y-1 transition-transform duration-500">
+                  <BrandLogo />
                 </div>
                 <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/40 mt-1">Plants & Ceramics</span>
               </div>
@@ -591,11 +554,13 @@ export default function App() {
             {/* VIEW: ORDER SUCCESS */}
             {view === 'order-success' && currentOrder && (
               <div className="max-w-2xl mx-auto px-8 py-32 text-center">
-                <Check size={48} strokeWidth={0.5} className="mx-auto mb-12 text-[#2C3D30]" />
-                <h2 className="text-6xl font-serif mb-8">Acquired.</h2>
-                <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-6">Reference: {currentOrder.orderNumber || currentOrder.id}</p>
-                <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">Your selections have been reserved. Check WhatsApp & Email for details.</p>
-                <button onClick={() => setView('store')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1">Return</button>
+                <div className="flex justify-center mb-12">
+                  <BrandLogo />
+                </div>
+                <h2 className="text-6xl font-serif mb-8 text-[#2C3D30]">Acquired.</h2>
+                <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-6">Reference: <span className="bg-[#1A1A1A] text-white px-2 py-1 font-bold">{currentOrder.orderNumber || currentOrder.id}</span></p>
+                <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">Your selections have been reserved for dispatch in {selectedCity}.<br/><br/>Please prepare {formatPrice(cartTotal)} for Cash on Delivery.</p>
+                <button onClick={() => setView('store')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] transition-colors">Return to Collection</button>
               </div>
             )}
 
@@ -606,7 +571,7 @@ export default function App() {
                 <form onSubmit={handleLogin} className="space-y-8 mt-16">
                   <input type="text" placeholder="Identification" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none" required />
                   <input type="password" placeholder="Passcode" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none" required />
-                  <button type="submit" className="w-full bg-[#1A1A1A] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 mt-8">Authenticate</button>
+                  <button type="submit" className="w-full bg-[#1A1A1A] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 mt-8 hover:bg-[#2C3D30] transition-colors">Authenticate</button>
                 </form>
               </div>
             )}
@@ -624,29 +589,29 @@ export default function App() {
                     </div>
                   </div>
                   {adminTab === 'ledger' && (
-                    <button onClick={() => setShowAddMenu(!showAddMenu)} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-6 py-3 flex gap-2">Add <Plus size={12}/></button>
+                    <button onClick={() => setShowAddMenu(!showAddMenu)} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-6 py-3 flex gap-2 hover:bg-[#2C3D30]">Add <Plus size={12}/></button>
                   )}
                 </div>
 
                 {showAddMenu && adminTab === 'ledger' && (
                   <div className="absolute right-16 top-64 w-56 bg-white border border-[#E5E0D8] shadow-xl z-50 flex flex-col py-2">
-                    <button onClick={() => setShowNewEntryModal(true)} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em]">New Product</button>
-                    <button onClick={() => setShowCSVModal(true)} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em]">CSV Upload</button>
+                    <button onClick={() => setShowNewEntryModal(true)} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#F7F5F0]">New Product</button>
+                    <button onClick={() => setShowCSVModal(true)} className="text-left px-6 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#F7F5F0]">CSV Upload</button>
                   </div>
                 )}
 
                 {/* TAB: CITIES MANAGEMENT */}
                 {adminTab === 'cities' && (
-                  <div className="max-w-3xl">
+                  <div className="max-w-3xl animate-in fade-in">
                     <div className="mb-12 flex gap-4">
                       <input type="text" placeholder="New Region Name..." value={newCityName} onChange={e => setNewCityName(e.target.value)} className="flex-1 bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none" />
-                      <button onClick={submitNewCity} className="bg-[#1A1A1A] text-white px-8 py-3 text-[10px] uppercase tracking-[0.2em]">Add Region</button>
+                      <button onClick={submitNewCity} className="bg-[#1A1A1A] text-white px-8 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30] transition-colors">Add Region</button>
                     </div>
                     <div className="space-y-4">
                       {cities.map(city => (
-                        <div key={city} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8]">
+                        <div key={city} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8] shadow-sm">
                           {editingCity === city ? (
-                             <input type="text" value={editCityName} onChange={e => setEditCityName(e.target.value)} className="border-b border-[#1A1A1A] focus:outline-none" />
+                             <input type="text" value={editCityName} onChange={e => setEditCityName(e.target.value)} className="border-b border-[#1A1A1A] focus:outline-none text-lg font-serif" />
                           ) : (
                              <span className="text-lg font-serif">{city}</span>
                           )}
@@ -654,9 +619,9 @@ export default function App() {
                              {editingCity === city ? (
                                 <button onClick={() => saveEditedCity(city)} className="text-[#2C3D30] font-bold">Save</button>
                              ) : (
-                                <button onClick={() => { setEditingCity(city); setEditCityName(city); }} className="text-[#1A1A1A]/50 hover:text-[#1A1A1A]">Edit</button>
+                                <button onClick={() => { setEditingCity(city); setEditCityName(city); }} className="text-[#1A1A1A]/50 hover:text-[#1A1A1A] transition-colors">Edit</button>
                              )}
-                             <button onClick={() => deleteCity(city)} className="text-red-900">Remove</button>
+                             <button onClick={() => deleteCity(city)} className="text-red-900 hover:text-red-700 transition-colors">Remove</button>
                           </div>
                         </div>
                       ))}
@@ -664,22 +629,37 @@ export default function App() {
                   </div>
                 )}
 
-                {/* TAB: ORDERS */}
+                {/* TAB: ORDERS WITH FETCH BUTTON */}
                 {adminTab === 'orders' && (
-                  <div className="space-y-12">
-                    {orders.map(order => (
-                      <div key={order.orderNumber || order.id} className="bg-white p-8 border border-[#E5E0D8]">
-                        <h3 className="text-2xl font-serif mb-4">{order.orderNumber || order.id} <span className="text-sm tracking-widest text-[#1A1A1A]/50 float-right">{formatPrice(order.totalAmount || order.total)}</span></h3>
-                        <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Client:</strong> {order.customer?.name} | {order.customer?.phone} | {order.city}</p>
-                        <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Items:</strong> {order.items?.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
-                      </div>
-                    ))}
+                  <div className="space-y-12 animate-in fade-in">
+                    <div className="flex justify-between items-center mb-8 border-b border-[#E5E0D8] pb-4">
+                      <h3 className="text-2xl font-serif text-[#1A1A1A]/50">Recent Transactions</h3>
+                      <button 
+                        onClick={fetchOrders} 
+                        className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] hover:bg-[#1A1A1A] hover:text-[#F7F5F0] px-6 py-3 transition-colors"
+                      >
+                        <RefreshCw size={12} className={isFetchingOrders ? "animate-spin" : ""} /> 
+                        {isFetchingOrders ? 'Syncing...' : 'Fetch Data'}
+                      </button>
+                    </div>
+
+                    {orders.length === 0 ? (
+                      <p className="text-[#1A1A1A]/40 text-sm tracking-widest text-center py-12">No orders found.</p>
+                    ) : (
+                      orders.map(order => (
+                        <div key={order.orderNumber || order.id} className="bg-white p-8 border border-[#E5E0D8] shadow-sm">
+                          <h3 className="text-2xl font-serif mb-4">{order.orderNumber || order.id} <span className="text-sm tracking-widest text-[#1A1A1A]/50 float-right">{formatPrice(order.totalAmount || order.total)}</span></h3>
+                          <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Client:</strong> {order.customer?.name} | {order.customer?.phone} | {order.city}</p>
+                          <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Items:</strong> {order.items?.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
                 {/* TAB: LEDGER */}
                 {adminTab === 'ledger' && (
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm animate-in fade-in">
                     <thead>
                       <tr className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#E5E0D8]">
                         <th className="pb-6">Designation</th>
@@ -689,10 +669,10 @@ export default function App() {
                     </thead>
                     <tbody>
                       {products.map(p => (
-                        <tr key={p.id || p._id} className="border-b border-[#E5E0D8]">
-                          <td className="py-6 font-serif text-lg">{p.name}</td>
+                        <tr key={p.id || p._id} className="border-b border-[#E5E0D8] hover:bg-white transition-colors">
+                          <td className="py-6 font-serif text-lg px-2">{p.name}</td>
                           <td className="py-6 tracking-widest">{formatPrice(p.price)}</td>
-                          <td className="py-6 text-right"><button onClick={() => deleteProduct(p.id || p._id)} className="text-red-900 text-[10px] uppercase tracking-[0.2em]">Delete</button></td>
+                          <td className="py-6 text-right px-2"><button onClick={() => deleteProduct(p.id || p._id)} className="text-red-900 text-[10px] uppercase tracking-[0.2em] hover:text-red-700">Delete</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -702,17 +682,15 @@ export default function App() {
             )}
           </main>
 
-          {/* MINIMALIST FOOTER */}
+          {/* MINIMALIST FOOTER - FAVICON MATCHING LOGO */}
           {view !== 'admin-login' && view !== 'admin-dashboard' && (
             <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
               <div className="max-w-[90rem] mx-auto px-8 flex justify-between items-center">
                 <div className="flex flex-col items-center md:items-start gap-1 shrink-0">
-                  <div className="flex items-center gap-2 text-3xl font-serif tracking-tighter text-[#1A1A1A]">
-                    <span className="text-3xl">🌿</span> P&C.
-                  </div>
-                  <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50">Plants & Ceramics</span>
+                  <BrandLogo />
+                  <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50 mt-1">Plants & Ceramics</span>
                 </div>
-                <button onClick={() => setView('admin-login')} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40">Staff Portal</button>
+                <button onClick={() => setView('admin-login')} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A] transition-colors">Staff Portal</button>
               </div>
             </footer>
           )}
