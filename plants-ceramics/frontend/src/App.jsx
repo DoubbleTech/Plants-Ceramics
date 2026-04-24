@@ -439,7 +439,7 @@ export default function App() {
                       )}
                     </div>
                   )}
-                  <button onClick={() => { setIsAuthenticated(false); setView('admin-login'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
+                  <button onClick={() => { setIsAuthenticated(false); setView('city-select'); if(typeof window !== 'undefined') window.history.pushState({}, '', '/'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
                     Terminate Session
                   </button>
                 </div>
@@ -747,7 +747,6 @@ export default function App() {
       </div>
     );
   }
-
 
   // ==========================================
   // RENDER: PUBLIC STOREFRONT
