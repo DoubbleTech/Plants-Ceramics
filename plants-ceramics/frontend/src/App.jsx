@@ -38,7 +38,8 @@ const formatPrice = (price) => `PKR ${price.toLocaleString()}`;
 export default function App() {
   // --- Navigation & Core State ---
   const [view, setView] = useState(() => {
-    if (typeof window !== 'undefined' && window.location.hostname.startsWith('admin')) {
+    // If the user navigates directly to /admin, show the staff portal.
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
       return 'admin-login';
     }
     return 'city-select';
@@ -99,7 +100,8 @@ export default function App() {
       const now = Date.now();
       if (now - parseInt(lastActivity, 10) < TWENTY_FOUR_HOURS) {
         setSelectedCity(savedCity);
-        if (typeof window !== 'undefined' && !window.location.hostname.startsWith('admin')) {
+        // Only jump to the store if we aren't trying to access the admin portal
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin')) {
           setView('store'); 
         }
         localStorage.setItem('pc_last_activity', now.toString()); 
@@ -379,7 +381,7 @@ export default function App() {
       )}
 
       {/* MAIN APPLICATION */}
-      {view !== 'city-select' && (
+      {view !== 'city-select' && view !== 'admin-login' && view !== 'admin-dashboard' && (
         <>
           <nav className={`fixed w-full top-0 z-40 transition-all duration-700 ${isScrolled ? 'bg-[#F7F5F0]/90 backdrop-blur-md py-4' : 'bg-transparent py-8'}`}>
             <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex justify-between items-center">
@@ -833,7 +835,28 @@ export default function App() {
                 </div>
               </div>
             )}
+          </main>
 
+          {/* MINIMALIST FOOTER */}
+          <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
+            <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex flex-col md:flex-row justify-between items-center gap-8">
+              <div className="flex items-center gap-2 text-2xl font-serif shrink-0">
+                <Leaf size={24} strokeWidth={0.5} /> P&C.
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 text-center flex flex-col gap-3">
+                <p>&copy; 2026 Plants & Ceramics. Curated in {selectedCity || 'Pakistan'}.</p>
+                <p className="text-[9px]">
+                  Developed & Maintained by <a href="https://doubbletech.com" target="_blank" rel="noopener noreferrer" className="text-[#1A1A1A] hover:text-[#2C3D30] hover:opacity-70 underline underline-offset-4 decoration-[0.5px] transition-all">Doubble Tech</a>
+                </p>
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
+
+      {/* ISOLATED ADMIN PORTAL */}
+      {(view === 'admin-login' || view === 'admin-dashboard') && (
+        <div className="min-h-screen bg-[#F7F5F0] pt-8">
             {/* VIEW: ADMIN LOGIN */}
             {view === 'admin-login' && (
               <div className="max-w-md mx-auto px-8 py-32 animate-in fade-in duration-[1000ms]">
@@ -914,7 +937,7 @@ export default function App() {
                         )}
                       </div>
                     )}
-                    <button onClick={() => { setIsAuthenticated(false); setView(typeof window !== 'undefined' && window.location.hostname.startsWith('admin') ? 'admin-login' : 'city-select'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
+                    <button onClick={() => { setIsAuthenticated(false); setView('city-select'); if(typeof window !== 'undefined') window.history.pushState({}, '', '/'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
                       Terminate Session
                     </button>
                   </div>
@@ -1222,26 +1245,7 @@ export default function App() {
                 )}
               </div>
             )}
-
-          </main>
-
-          {/* MINIMALIST FOOTER */}
-          {view !== 'admin-login' && view !== 'admin-dashboard' && (
-            <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
-              <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex flex-col md:flex-row justify-between items-center gap-8">
-                <div className="flex items-center gap-2 text-2xl font-serif shrink-0">
-                  <Leaf size={24} strokeWidth={0.5} /> P&C.
-                </div>
-                <div className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 text-center flex flex-col gap-3">
-                  <p>&copy; 2026 Plants & Ceramics. Curated in {selectedCity || 'Pakistan'}.</p>
-                  <p className="text-[9px]">
-                    Developed & Maintained by <a href="https://doubbletech.com" target="_blank" rel="noopener noreferrer" className="text-[#1A1A1A] hover:text-[#2C3D30] hover:opacity-70 underline underline-offset-4 decoration-[0.5px] transition-all">Doubble Tech</a>
-                  </p>
-                </div>
-              </div>
-            </footer>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
