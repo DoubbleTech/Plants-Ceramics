@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, ArrowLeft, Check, Lock, MoveRight, MapPin, Map, RefreshCw, X } from 'lucide-react';
 
-const API_BASE = `http://${window.location.hostname}:5005/api`;
+// --- MIXED CONTENT FIX ---
+// By changing this to a relative path, the browser automatically uses your secure HTTPS connection!
+const API_BASE = `/api`;
 const formatPrice = (price) => `PKR ${Number(price).toLocaleString()}`;
 
 // Forces App to read URL and bypass cache logic
@@ -48,13 +50,16 @@ export default function App() {
   // --- FETCH INITIAL DATA ---
   useEffect(() => {
     fetch(`${API_BASE}/catalog`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("Backend offline");
+        return res.json();
+      })
       .then(data => {
         if(data.products && data.products.length > 0) setProducts(data.products);
         if(data.cities && data.cities.length > 0) setCities(data.cities);
         if(data.categories && data.categories.length > 0) setCategories(data.categories);
       })
-      .catch(err => console.error("Backend offline", err));
+      .catch(err => console.error("Database unavailable:", err));
   }, []);
 
   const fetchOrders = async () => {
@@ -66,7 +71,7 @@ export default function App() {
       setOrders(data);
       alert("✅ Latest orders fetched from the database!");
     } catch (err) {
-      alert("⚠️ Error fetching data! Make sure Port 5005 is open.");
+      alert("⚠️ Error fetching data! The Nginx proxy might not be configured correctly yet.");
     }
     setTimeout(() => setIsFetchingOrders(false), 500); 
   };
@@ -114,7 +119,7 @@ export default function App() {
     const emailParams = {
       service_id: 'service_hyfp919', 
       template_id: 'template_nlst9qp',
-      user_id: 'NHbYcpq7qYXu5mtf', // <--- PASTE YOUR EMAILJS PUBLIC KEY RIGHT HERE
+      user_id: 'NHbYcpq7qYXu5mtf-', 
       template_params: {
         order_number: orderNum, customer_name: checkoutForm.name, customer_email: checkoutForm.email,
         phone: checkoutForm.phone, city: selectedCity, address: checkoutForm.address,
