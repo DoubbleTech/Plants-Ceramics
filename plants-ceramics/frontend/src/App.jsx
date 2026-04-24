@@ -98,7 +98,7 @@ export default function App() {
       const now = Date.now();
       if (now - parseInt(lastActivity, 10) < TWENTY_FOUR_HOURS) {
         setSelectedCity(savedCity);
-        // Only jump to the store if we aren't trying to access the admin portal
+        // Ensure we don't redirect if the user is trying to access the admin portal
         if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin')) {
           setView('store'); 
         }
@@ -349,7 +349,6 @@ export default function App() {
       }, 2500);
     }
   };
-
 
   // ==========================================
   // RENDER: ISOLATED ADMIN PORTAL
@@ -788,11 +787,16 @@ export default function App() {
                 <button onClick={() => setView('plant-guide')} className={`hover:text-[#1A1A1A] transition-colors ${view === 'plant-guide' && 'text-[#1A1A1A]'}`}>Guide</button>
               </div>
 
+              {/* LUXURY CODED LOGO */}
               <div 
-                className="absolute left-1/2 -translate-x-1/2 text-2xl md:text-3xl font-serif tracking-tight cursor-pointer flex items-center gap-2"
+                className="absolute left-1/2 -translate-x-1/2 cursor-pointer flex flex-col items-center justify-center group"
                 onClick={() => setView('store')}
               >
-                Plants & Ceramics
+                <div className="flex items-center gap-2">
+                  <Leaf size={28} strokeWidth={1} className="text-[#2C3D30] group-hover:-rotate-12 transition-transform duration-500" />
+                  <span className="text-2xl md:text-3xl font-serif tracking-tighter text-[#1A1A1A]">P&C.</span>
+                </div>
+                <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/40 mt-1">Plants & Ceramics</span>
               </div>
 
               <div className="flex items-center gap-8">
@@ -1238,9 +1242,15 @@ export default function App() {
           {/* MINIMALIST FOOTER */}
           <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
             <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex flex-col md:flex-row justify-between items-center gap-8">
-              <div className="flex items-center gap-2 text-2xl font-serif shrink-0">
-                <Leaf size={24} strokeWidth={0.5} /> P&C.
+              
+              {/* LUXURY CODED LOGO - FOOTER */}
+              <div className="flex flex-col items-center md:items-start gap-1 shrink-0">
+                <div className="flex items-center gap-2 text-3xl font-serif tracking-tighter text-[#1A1A1A]">
+                  <Leaf size={24} strokeWidth={1} className="text-[#2C3D30]" /> P&C.
+                </div>
+                <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50">Plants & Ceramics</span>
               </div>
+
               <div className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 text-center flex flex-col gap-3">
                 <p>&copy; 2026 Plants & Ceramics. Curated in {selectedCity || 'Pakistan'}.</p>
                 <p className="text-[9px]">
