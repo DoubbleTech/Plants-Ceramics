@@ -1,7 +1,6 @@
 /**
- * Plants & Ceramics - Backend API
+ * Plants & Ceramics - Full Stack API
  * Run this on your VPS using PM2: pm2 start server.js --name "plants-api"
- * Ensure you have a .env file with your MONGO_URI and PORT (e.g., PORT=5005)
  */
 
 const express = require('express');
@@ -12,60 +11,43 @@ require('dotenv').config();
 const app = express();
 
 // --- 1. Middleware ---
-// CORS allows your Next.js/React frontend to talk to this Node.js backend securely
+// Allows your React frontend to communicate with this server
 app.use(cors());
-app.use(express.json()); // Parses incoming JSON data from checkout forms
+app.use(express.json({ limit: '50mb' })); // Increased limit for bulk CSV uploads
 
 // --- 2. Database Connection ---
-// Connect to MongoDB Atlas. If it fails, it won't crash your VPS.
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/plants_ceramics', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-}).then(() => console.log('🌿 Connected to MongoDB Atlas'))
+}).then(() => console.log('🌿 Connected to MongoDB Database'))
   .catch(err => console.error('Database connection error:', err));
 
-// --- 3. Database Schemas (The Blueprints) ---
-
-// Product Schema (Includes city-wise stock)
+// --- 3. Database Schemas ---
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true },
   category: { type: String, required: true },
-  subCategory: String,
   price: { type: Number, required: true },
-  discount: Number,
-  isSaleActive: { type: Boolean, default: false },
-  stock: { type: Map, of: Number, default: {} }, // e.g., { "Karachi": 10, "Islamabad": 5 }
+  stock: { type: Map, of: Number, default: {} },
   isBykeaEligible: { type: Boolean, default: true },
-  imageUrls: [String], // Array for multiple images (Cloudinary URLs)
+  imageUrls: [String],
   shortDesc: String,
   longDesc: String,
   createdAt: { type: Date, default: Date.now }
 });
 const Product = mongoose.model('Product', productSchema);
 
-// Order Schema
 const orderSchema = new mongoose.Schema({
   orderNumber: { type: String, unique: true },
   city: String,
   customer: {
-    name: String,
-    email: String,
-    phone: String,
-    address: String,
-    locationLink: String,
-    instructions: String,
-    paymentMethod: String, // 'COD' or 'TRF'
-    receiptUrl: String // Cloudinary link to the bank transfer receipt
+    name: String, email: String, phone: String, address: String, paymentMethod: String
   },
   items: Array,
   totalAmount: Number,
-  requiresCarDelivery: Boolean,
-  status: { type: String, default: 'Pending' }, // Pending, Confirmed, Dispatched, Delivered
   createdAt: { type: Date, default: Date.now }
 });
 const Order = mongoose.model('Order', orderSchema);
 
-// Taxonomy Schema (To store dynamic Cities and Categories)
 const taxonomySchema = new mongoose.Schema({
   type: String, // 'category' or 'city'
   name: String
@@ -74,8 +56,7 @@ const Taxonomy = mongoose.model('Taxonomy', taxonomySchema);
 
 // --- 4. API Routes ---
 
-// @route   GET /api/catalog
-// @desc    Get all products, categories, and cities for the storefront
+// GET FULL CATALOG
 app.get('/api/catalog', async (req, res) => {
   try {
     const products = await Product.find().sort({ createdAt: -1 });
@@ -85,78 +66,95 @@ app.get('/api/catalog', async (req, res) => {
     res.json({
       products,
       categories: ["All", ...categories.map(c => c.name)],
-      cities: cities.map(c => c.name)
+      cities: cities.map(c => c.name).length ? cities.map(c => c.name) : ["Islamabad", "Karachi", "Rawalpindi"] // Defaults if empty
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load catalog' });
   }
 });
 
-// @route   POST /api/orders
-// @desc    Submit a new customer order and deduct stock
+// SUBMIT ORDER
 app.post('/api/orders', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
   try {
-    const orderData = req.body;
-    orderData.orderNumber = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const newOrder = new Order(req.body);
+    await newOrder.save();
     
-    // 1. Create the Order
-    const newOrder = new Order(orderData);
-    await newOrder.save({ session });
-
-    // 2. Deduct City-Wise Stock for each item
-    for (let item of orderData.items) {
-      const product = await Product.findById(item._id).session(session);
-      if (product && product.stock && product.stock.get(orderData.city) >= item.qty) {
-        let currentStock = product.stock.get(orderData.city);
-        product.stock.set(orderData.city, currentStock - item.qty);
-        await product.save({ session });
-      } else {
-        throw new Error(`Insufficient stock for ${item.name} in ${orderData.city}`);
+    // Deduct stock
+    for (let item of req.body.items) {
+      const product = await Product.findById(item._id || item.id);
+      if (product) {
+        let currentStock = product.stock.get(req.body.city) || 0;
+        product.stock.set(req.body.city, Math.max(0, currentStock - item.qty));
+        await product.save();
       }
     }
-
-    await session.commitTransaction();
-    res.status(201).json({ success: true, orderNumber: newOrder.orderNumber });
+    res.status(201).json({ success: true });
   } catch (error) {
-    await session.abortTransaction();
     res.status(400).json({ error: error.message });
-  } finally {
-    session.endSession();
   }
 });
 
-// --- Admin Routes (Protected in production via JWT tokens) ---
+// GET ORDERS (ADMIN)
+app.get('/api/admin/orders', async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load orders' });
+  }
+});
 
-// @route   POST /api/admin/login
-// @desc    Verify admin credentials
+// ADD SINGLE PRODUCT (ADMIN)
+app.post('/api/admin/products', async (req, res) => {
+  try {
+    const product = new Product(req.body);
+    await product.save();
+    res.status(201).json(product);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// BULK CSV UPLOAD (ADMIN)
+app.post('/api/admin/products/bulk', async (req, res) => {
+  try {
+    await Product.insertMany(req.body.products);
+    res.status(201).json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Bulk import failed' }); }
+});
+
+// DELETE PRODUCT (ADMIN)
+app.delete('/api/admin/products/:id', async (req, res) => {
+  try {
+    await Product.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- CITY MANAGEMENT ROUTES ---
+app.post('/api/admin/cities', async (req, res) => {
+  await new Taxonomy({ type: 'city', name: req.body.name }).save();
+  res.json({ success: true });
+});
+
+app.put('/api/admin/cities/:oldName', async (req, res) => {
+  await Taxonomy.updateOne({ type: 'city', name: req.params.oldName }, { name: req.body.newName });
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/cities/:name', async (req, res) => {
+  await Taxonomy.deleteOne({ type: 'city', name: req.params.name });
+  res.json({ success: true });
+});
+
+// ADMIN LOGIN
 app.post('/api/admin/login', (req, res) => {
-  const { username, password } = req.body;
-  // In production, compare against hashed passwords in the DB and return a JWT token
-  if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
-    res.json({ success: true, token: "mock_jwt_token_for_prototype" });
+  if (req.body.username === 'admin' && req.body.password === (process.env.ADMIN_PASSWORD || 'Umarali667@')) {
+    res.json({ success: true });
   } else {
     res.status(401).json({ error: "Invalid credentials" });
   }
 });
 
-// @route   POST /api/admin/products/bulk
-// @desc    Handle CSV bulk uploads
-app.post('/api/admin/products/bulk', async (req, res) => {
-  try {
-    const productsArray = req.body.products; // JSON array generated from CSV by the frontend
-    await Product.insertMany(productsArray);
-    res.status(201).json({ success: true, message: `${productsArray.length} items added.` });
-  } catch (error) {
-    res.status(500).json({ error: 'Bulk import failed' });
-  }
-});
-
-// --- 5. Start Server safely on an isolated port ---
-// Port 5005 is used here to avoid clashing with your existing VPS apps
 const PORT = process.env.PORT || 5005;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🌿 Plants & Ceramics API running securely on port ${PORT}`);
 });
