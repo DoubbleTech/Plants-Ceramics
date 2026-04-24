@@ -195,7 +195,7 @@ export default function App() {
       `*Total:* ${formatPrice(cartTotal)}\n` +
       `*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`
     );
-    window.open(`https://wa.me/923000000000?text=${waText}`, '_blank'); // REPLACE WITH YOUR NUMBER
+    window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); // REPLACE WITH YOUR NUMBER
 
     setCurrentOrder(newOrder);
     setCart([]);
