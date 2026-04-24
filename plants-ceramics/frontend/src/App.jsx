@@ -37,7 +37,12 @@ const formatPrice = (price) => `PKR ${price.toLocaleString()}`;
 
 export default function App() {
   // --- Navigation & Core State ---
-  const [view, setView] = useState('city-select'); 
+  const [view, setView] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.hostname.startsWith('admin')) {
+      return 'admin-login';
+    }
+    return 'city-select';
+  });
   const [selectedCity, setSelectedCity] = useState(null);
   const [cities, setCities] = useState(initialCities);
   const [products, setProducts] = useState(initialProducts);
@@ -94,7 +99,9 @@ export default function App() {
       const now = Date.now();
       if (now - parseInt(lastActivity, 10) < TWENTY_FOUR_HOURS) {
         setSelectedCity(savedCity);
-        setView('store'); 
+        if (typeof window !== 'undefined' && !window.location.hostname.startsWith('admin')) {
+          setView('store'); 
+        }
         localStorage.setItem('pc_last_activity', now.toString()); 
       } else {
         localStorage.removeItem('pc_selected_city');
@@ -367,13 +374,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-
-            <button 
-              onClick={() => setView('admin-login')} 
-              className="mt-24 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A] transition-colors flex items-center justify-center gap-1.5 w-full"
-            >
-              <Lock size={10} /> Staff Portal
-            </button>
           </div>
         </div>
       )}
@@ -914,7 +914,7 @@ export default function App() {
                         )}
                       </div>
                     )}
-                    <button onClick={() => { setIsAuthenticated(false); setView('city-select'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
+                    <button onClick={() => { setIsAuthenticated(false); setView(typeof window !== 'undefined' && window.location.hostname.startsWith('admin') ? 'admin-login' : 'city-select'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#8B5A2B] hover:opacity-50 transition-opacity">
                       Terminate Session
                     </button>
                   </div>
@@ -1238,12 +1238,6 @@ export default function App() {
                     Developed & Maintained by <a href="https://doubbletech.com" target="_blank" rel="noopener noreferrer" className="text-[#1A1A1A] hover:text-[#2C3D30] hover:opacity-70 underline underline-offset-4 decoration-[0.5px] transition-all">Doubble Tech</a>
                   </p>
                 </div>
-                <button 
-                  onClick={() => setView('admin-login')} 
-                  className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A] transition-colors shrink-0"
-                >
-                  Staff Portal <ArrowUpRight size={12} strokeWidth={1} />
-                </button>
               </div>
             </footer>
           )}
