@@ -42,14 +42,14 @@ export default function App() {
     name: '', category: 'Indoor Plant', price: '', stockKHI: '', image: '🪴', desc: ''
   });
 
-  // Fetch Initial Data
+  // --- FETCH INITIAL DATA (With Safety Nets Restored!) ---
   useEffect(() => {
     fetch(`${API_BASE}/catalog`)
       .then(res => res.json())
       .then(data => {
-        if(data.products) setProducts(data.products);
-        if(data.cities) setCities(data.cities);
-        if(data.categories) setCategories(data.categories);
+        if(data.products && data.products.length > 0) setProducts(data.products);
+        if(data.cities && data.cities.length > 0) setCities(data.cities);
+        if(data.categories && data.categories.length > 0) setCategories(data.categories);
       })
       .catch(err => console.error("Backend offline", err));
   }, []);
@@ -71,9 +71,18 @@ export default function App() {
     if (isAuthenticated && adminTab === 'orders') fetchOrders();
   }, [isAuthenticated, adminTab]);
 
+  // --- URL INTERCEPTOR & SESSION STORAGE ---
   useEffect(() => {
     const savedCity = localStorage.getItem('pc_selected_city');
-    if (savedCity) { setSelectedCity(savedCity); setView('store'); }
+    const currentPath = window.location.pathname;
+
+    if (currentPath.includes('admin')) {
+      setView('admin-login');
+    } else if (savedCity) { 
+      setSelectedCity(savedCity); 
+      setView('store'); 
+    }
+    
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
