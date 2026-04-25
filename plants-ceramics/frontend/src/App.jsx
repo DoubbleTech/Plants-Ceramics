@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, ArrowLeft, Check, Lock, MoveRight, MapPin, Map, RefreshCw, X } from 'lucide-react';
 
-// --- MIXED CONTENT FIX ---
-// By changing this to a relative path, the browser automatically uses your secure HTTPS connection!
 const API_BASE = `/api`;
 const formatPrice = (price) => `PKR ${Number(price).toLocaleString()}`;
 
-// Forces App to read URL and bypass cache logic
 const getInitialView = () => {
   if (window.location.pathname.toLowerCase().includes('admin')) return 'admin-login';
   if (localStorage.getItem('pc_selected_city')) return 'store';
@@ -31,14 +28,12 @@ export default function App() {
   const [currentOrder, setCurrentOrder] = useState(null);
   const [checkoutForm, setCheckoutForm] = useState({ name: '', email: '', phone: '', address: '', paymentMethod: 'COD' });
 
-  // Admin State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [adminTab, setAdminTab] = useState('ledger'); 
   const [isFetchingOrders, setIsFetchingOrders] = useState(false);
   
-  // Modals & Forms
   const [showNewEntryModal, setShowNewEntryModal] = useState(false);
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
@@ -47,7 +42,6 @@ export default function App() {
     name: '', category: 'Indoor Plant', price: '', stockKHI: '', image: '🪴', desc: ''
   });
 
-  // --- FETCH INITIAL DATA ---
   useEffect(() => {
     fetch(`${API_BASE}/catalog`)
       .then(res => {
@@ -115,7 +109,6 @@ export default function App() {
     } catch (err) { console.error("Order API failed", err); }
     setOrders(prev => [newOrder, ...prev]);
 
-    // EMAIL JS CONFIGURATION
     const emailParams = {
       service_id: 'service_hyfp919', 
       template_id: 'template_nlst9qp',
@@ -128,7 +121,6 @@ export default function App() {
     };
     fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(emailParams) }).catch(e=>e);
 
-    // WHATSAPP CONFIGURATION
     const waText = encodeURIComponent(`🌿 *New P&C Order: ${orderNum}*\n\n*Client:* ${checkoutForm.name}\n*Phone:* ${checkoutForm.phone}\n*Address:* ${checkoutForm.address}, ${selectedCity}\n\n*Items:*\n${cart.map(item => `- ${item.qty}x ${item.name}`).join('\n')}\n\n*Total:* ${formatPrice(cartTotal)}\n*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`);
     window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); 
 
@@ -143,7 +135,6 @@ export default function App() {
     } catch (err) { if (username === 'admin' && password === 'Umarali667@') { setIsAuthenticated(true); setView('admin-dashboard'); } }
   };
 
-  // --- ADMIN FUNCTIONALITY ---
   const submitNewCity = async (e) => {
     e.preventDefault();
     const c = newCityName.trim();
@@ -220,14 +211,12 @@ export default function App() {
     try { await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' }); } catch(err) {}
   };
 
-  // Image Logo Component
   const BrandLogo = () => (
     <img src="/logo.png" alt="Plants & Ceramics" className="h-12 md:h-16 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
   );
 
   return (
     <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A]">
-      
       {view === 'city-select' && (
         <div className="min-h-screen flex flex-col items-center justify-center animate-in fade-in duration-[1500ms] p-8">
           <div className="text-center max-w-xl w-full">
@@ -268,7 +257,6 @@ export default function App() {
           </nav>
 
           <main className="pt-32 pb-24 min-h-[80vh]">
-            
             {view === 'store' && (
               <div className="animate-in fade-in duration-[1000ms]">
                 <div className="max-w-[90rem] mx-auto px-8 md:px-16 mb-24 pt-12"><h1 className="text-5xl md:text-8xl font-serif leading-[1.1] tracking-tight mb-8">Cultivated <br className="hidden md:block"/>for the modern sanctuary.</h1><div className="w-full h-[1px] bg-[#E5E0D8]"></div></div>
