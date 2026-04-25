@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, ArrowLeft, Check, Lock, MoveRight, MapPin, Map, RefreshCw, X } from 'lucide-react';
+import Swal from 'sweetalert2'; // <-- SWEETALERT IMPORTED HERE
 
 const API_BASE = `/api`;
 const formatPrice = (price) => `PKR ${Number(price).toLocaleString()}`;
@@ -66,9 +67,9 @@ export default function App() {
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
       setOrders(data);
-      alert("✅ Latest orders fetched from the database!");
+      Swal.fire({ icon: 'success', title: 'Synced', text: 'Latest orders fetched from the database!', confirmButtonColor: '#1A1A1A' });
     } catch (err) {
-      alert("⚠️ Error fetching data! The server might be unreachable.");
+      Swal.fire({ icon: 'error', title: 'Sync Failed', text: 'Error fetching data! The server might be unreachable.', confirmButtonColor: '#1A1A1A' });
     }
     setTimeout(() => setIsFetchingOrders(false), 500); 
   };
@@ -130,7 +131,7 @@ export default function App() {
     const emailParams = {
       service_id: 'service_hyfp919', 
       template_id: 'template_nlst9qp',
-      user_id: 'NHbYcpq7qYXu5mtf-', 
+      user_id: 'YOUR_PUBLIC_KEY', // <--- PASTE YOUR EMAILJS PUBLIC KEY RIGHT HERE
       template_params: {
         order_number: orderNum, customer_name: checkoutForm.name, customer_email: checkoutForm.email,
         phone: checkoutForm.phone, city: selectedCity, address: checkoutForm.address,
@@ -145,7 +146,6 @@ export default function App() {
     setCurrentOrder(newOrder); setCart([]); setView('order-success');
   };
 
-  // --- REPAIRED LOGIN LOGIC ---
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
@@ -159,15 +159,14 @@ export default function App() {
         setIsAuthenticated(true); 
         setView('admin-dashboard'); 
       } else {
-        alert("❌ Incorrect Identification or Passcode.");
+        Swal.fire({ icon: 'error', title: 'Access Denied', text: 'Incorrect Identification or Passcode.', confirmButtonColor: '#1A1A1A' });
       }
     } catch (err) { 
-      // Hardcoded fallback just in case the server connection drops
       if (username === 'admin' && password === 'Umarali667@') { 
         setIsAuthenticated(true); 
         setView('admin-dashboard'); 
       } else {
-        alert("❌ Authentication failed. Could not connect to server.");
+        Swal.fire({ icon: 'error', title: 'Connection Error', text: 'Authentication failed. Could not connect to server.', confirmButtonColor: '#1A1A1A' });
       }
     }
   };
@@ -179,15 +178,22 @@ export default function App() {
       setCities(prev => [...prev, c].sort());
       try {
         await fetch(`${API_BASE}/admin/cities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) });
-        alert(`✅ Success! Region "${c}" has been securely added to the database.`);
-      } catch (err) { alert(`⚠️ Database error.`); }
+        Swal.fire({ icon: 'success', title: 'Region Added', text: `Success! Region "${c}" has been securely added to the database.`, confirmButtonColor: '#1A1A1A' });
+      } catch (err) { 
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Database error while adding region.', confirmButtonColor: '#1A1A1A' }); 
+      }
     }
     setNewCityName('');
   };
 
   const deleteCity = async (cityName) => {
     setCities(prev => prev.filter(c => c !== cityName));
-    try { await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' }); alert(`🗑️ Region "${cityName}" deleted.`); } catch (err) {}
+    try { 
+      await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' }); 
+      Swal.fire({ icon: 'info', title: 'Deleted', text: `Region "${cityName}" has been removed.`, confirmButtonColor: '#1A1A1A' });
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Could not delete region from database.', confirmButtonColor: '#1A1A1A' });
+    }
   };
 
   const submitNewCategory = async (e) => {
@@ -197,15 +203,22 @@ export default function App() {
       setCategories(prev => [...prev, c].sort());
       try {
         await fetch(`${API_BASE}/admin/categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) });
-        alert(`✅ Success! Category "${c}" added.`);
-      } catch (err) { alert(`⚠️ Database error.`); }
+        Swal.fire({ icon: 'success', title: 'Category Added', text: `Success! Category "${c}" added.`, confirmButtonColor: '#1A1A1A' });
+      } catch (err) { 
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Database error while adding category.', confirmButtonColor: '#1A1A1A' }); 
+      }
     }
     setNewCategoryName('');
   };
 
   const deleteCategory = async (catName) => {
     setCategories(prev => prev.filter(c => c !== catName));
-    try { await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); alert(`🗑️ Category "${catName}" deleted.`); } catch (err) {}
+    try { 
+      await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); 
+      Swal.fire({ icon: 'info', title: 'Deleted', text: `Category "${catName}" has been removed.`, confirmButtonColor: '#1A1A1A' });
+    } catch (err) {
+       Swal.fire({ icon: 'error', title: 'Error', text: 'Could not delete category.', confirmButtonColor: '#1A1A1A' });
+    }
   };
 
   const submitNewEntry = async (e) => {
@@ -222,8 +235,10 @@ export default function App() {
       const res = await fetch(`${API_BASE}/admin/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newProduct) });
       const savedProduct = await res.json();
       setProducts(prev => [savedProduct, ...prev]);
-      alert(`✅ Product "${savedProduct.name}" added to database.`);
-    } catch (err) { alert("Error saving product."); }
+      Swal.fire({ icon: 'success', title: 'Product Added', text: `Product "${savedProduct.name}" added to database.`, confirmButtonColor: '#1A1A1A' });
+    } catch (err) { 
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Error saving product.', confirmButtonColor: '#1A1A1A' }); 
+    }
     setShowNewEntryModal(false);
   };
 
@@ -242,8 +257,10 @@ export default function App() {
         setProducts(prev => [...parsedProducts, ...prev]);
         try {
           await fetch(`${API_BASE}/admin/products/bulk`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products: parsedProducts }) });
-          alert(`✅ Bulk CSV Upload Successful!`);
-        } catch(err) {}
+          Swal.fire({ icon: 'success', title: 'Upload Complete', text: 'Bulk CSV Upload Successful!', confirmButtonColor: '#1A1A1A' });
+        } catch(err) {
+          Swal.fire({ icon: 'error', title: 'Upload Failed', text: 'Failed to save bulk products.', confirmButtonColor: '#1A1A1A' });
+        }
         setShowCSVModal(false);
       };
       reader.readAsText(file);
@@ -252,14 +269,16 @@ export default function App() {
 
   const deleteProduct = async (id) => {
     setProducts(prev => prev.filter(p => p.id !== id && p._id !== id));
-    try { await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' }); } catch(err) {}
+    try { 
+      await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' }); 
+      Swal.fire({ icon: 'info', title: 'Deleted', text: 'Product removed from ledger.', confirmButtonColor: '#1A1A1A' });
+    } catch(err) {}
   };
 
   const BrandLogo = () => (
     <img src="/logo.png" alt="Plants & Ceramics" className="h-12 md:h-16 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
   );
 
-  // This variable checks if you are currently looking at the admin portal
   const isClientView = !view.includes('admin');
 
   return (
@@ -285,7 +304,6 @@ export default function App() {
 
       {view !== 'city-select' && (
         <>
-          {/* THE FIX: Navbar is completely hidden if you are in the Admin Panel */}
           {isClientView && (
             <nav className={`fixed w-full top-0 z-40 transition-all duration-700 ${isScrolled ? 'bg-[#F7F5F0]/90 backdrop-blur-md py-4 shadow-sm' : 'bg-transparent py-8'}`}>
               <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex justify-between items-center">
@@ -538,7 +556,6 @@ export default function App() {
             )}
           </main>
 
-          {/* THE FIX: Footer is completely hidden if you are in the Admin Panel */}
           {isClientView && (
             <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
               <div className="max-w-[90rem] mx-auto px-8 flex justify-between items-center">
