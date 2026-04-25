@@ -68,7 +68,7 @@ export default function App() {
       setOrders(data);
       alert("✅ Latest orders fetched from the database!");
     } catch (err) {
-      alert("⚠️ Error fetching data! The Nginx proxy might not be configured correctly yet.");
+      alert("⚠️ Error fetching data! The server might be unreachable.");
     }
     setTimeout(() => setIsFetchingOrders(false), 500); 
   };
@@ -110,11 +110,9 @@ export default function App() {
     const orderNum = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
     const newOrder = { orderNumber: orderNum, date: new Date().toLocaleString(), items: [...cart], totalAmount: cartTotal, customer: checkoutForm, city: selectedCity };
 
-    // Send to Database
     try { 
       const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newOrder) });
       if (res.ok) {
-        // Manually deduct local stock so UI updates without refreshing
         setProducts(prev => prev.map(p => {
           const cartItem = cart.find(ci => ci._id === p._id || ci.id === p.id);
           if (cartItem) {
@@ -129,7 +127,6 @@ export default function App() {
     
     setOrders(prev => [newOrder, ...prev]);
 
-    // EMAIL JS CONFIGURATION
     const emailParams = {
       service_id: 'service_hyfp919', 
       template_id: 'template_nlst9qp',
@@ -142,22 +139,39 @@ export default function App() {
     };
     fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(emailParams) }).catch(e=>e);
 
-    // WHATSAPP CONFIGURATION
     const waText = encodeURIComponent(`🌿 *New P&C Order: ${orderNum}*\n\n*Client:* ${checkoutForm.name}\n*Phone:* ${checkoutForm.phone}\n*Address:* ${checkoutForm.address}, ${selectedCity}\n\n*Items:*\n${cart.map(item => `- ${item.qty}x ${item.name}`).join('\n')}\n\n*Total:* ${formatPrice(cartTotal)}\n*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`);
     window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); 
 
     setCurrentOrder(newOrder); setCart([]); setView('order-success');
   };
 
+  // --- REPAIRED LOGIN LOGIC ---
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-      if (res.ok) { setIsAuthenticated(true); setView('admin-dashboard'); }
-    } catch (err) { if (username === 'admin' && password === 'Umarali667@') { setIsAuthenticated(true); setView('admin-dashboard'); } }
+      const res = await fetch(`${API_BASE}/admin/login`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ username, password }) 
+      });
+      
+      if (res.ok) { 
+        setIsAuthenticated(true); 
+        setView('admin-dashboard'); 
+      } else {
+        alert("❌ Incorrect Identification or Passcode.");
+      }
+    } catch (err) { 
+      // Hardcoded fallback just in case the server connection drops
+      if (username === 'admin' && password === 'Umarali667@') { 
+        setIsAuthenticated(true); 
+        setView('admin-dashboard'); 
+      } else {
+        alert("❌ Authentication failed. Could not connect to server.");
+      }
+    }
   };
 
-  // --- ADD/DELETE CITIES ---
   const submitNewCity = async (e) => {
     e.preventDefault();
     const c = newCityName.trim();
@@ -176,7 +190,6 @@ export default function App() {
     try { await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' }); alert(`🗑️ Region "${cityName}" deleted.`); } catch (err) {}
   };
 
-  // --- ADD/DELETE CATEGORIES ---
   const submitNewCategory = async (e) => {
     e.preventDefault();
     const c = newCategoryName.trim();
@@ -195,7 +208,6 @@ export default function App() {
     try { await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); alert(`🗑️ Category "${catName}" deleted.`); } catch (err) {}
   };
 
-  // --- ADD/DELETE PRODUCTS ---
   const submitNewEntry = async (e) => {
     e.preventDefault();
     const initializedStock = {};
@@ -243,10 +255,12 @@ export default function App() {
     try { await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' }); } catch(err) {}
   };
 
-  // Image Logo Component
   const BrandLogo = () => (
     <img src="/logo.png" alt="Plants & Ceramics" className="h-12 md:h-16 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
   );
+
+  // This variable checks if you are currently looking at the admin portal
+  const isClientView = !view.includes('admin');
 
   return (
     <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A]">
@@ -271,26 +285,29 @@ export default function App() {
 
       {view !== 'city-select' && (
         <>
-          <nav className={`fixed w-full top-0 z-40 transition-all duration-700 ${isScrolled ? 'bg-[#F7F5F0]/90 backdrop-blur-md py-4 shadow-sm' : 'bg-transparent py-8'}`}>
-            <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex justify-between items-center">
-              <div className="flex gap-8 items-center text-[10px] uppercase tracking-[0.2em] font-medium text-[#1A1A1A]/60">
-                <button onClick={() => setView('store')} className="hover:text-[#1A1A1A]">Collection</button>
+          {/* THE FIX: Navbar is completely hidden if you are in the Admin Panel */}
+          {isClientView && (
+            <nav className={`fixed w-full top-0 z-40 transition-all duration-700 ${isScrolled ? 'bg-[#F7F5F0]/90 backdrop-blur-md py-4 shadow-sm' : 'bg-transparent py-8'}`}>
+              <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex justify-between items-center">
+                <div className="flex gap-8 items-center text-[10px] uppercase tracking-[0.2em] font-medium text-[#1A1A1A]/60">
+                  <button onClick={() => setView('store')} className="hover:text-[#1A1A1A]">Collection</button>
+                </div>
+                <div className="absolute left-1/2 -translate-x-1/2 cursor-pointer group" onClick={() => setView('store')}>
+                  <BrandLogo /><div className="hidden items-center gap-2 text-2xl font-serif group-hover:-rotate-12 transition-transform duration-500">🌿 P&C.</div>
+                </div>
+                <div className="flex items-center gap-8">
+                  {selectedCity && (
+                    <button onClick={() => setView('city-select')} className="hidden md:flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><MapPin size={10} /> {selectedCity}</button>
+                  )}
+                  <button onClick={() => setView('cart')} className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] font-medium hover:text-[#2C3D30]">
+                    <span>Bag ({cart.reduce((sum, item) => sum + item.qty, 0)})</span>
+                  </button>
+                </div>
               </div>
-              <div className="absolute left-1/2 -translate-x-1/2 cursor-pointer group" onClick={() => setView('store')}>
-                <BrandLogo /><div className="hidden items-center gap-2 text-2xl font-serif group-hover:-rotate-12 transition-transform duration-500">🌿 P&C.</div>
-              </div>
-              <div className="flex items-center gap-8">
-                {selectedCity && view !== 'admin-login' && view !== 'admin-dashboard' && (
-                  <button onClick={() => setView('city-select')} className="hidden md:flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><MapPin size={10} /> {selectedCity}</button>
-                )}
-                <button onClick={() => setView('cart')} className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] font-medium hover:text-[#2C3D30]">
-                  <span>Bag ({cart.reduce((sum, item) => sum + item.qty, 0)})</span>
-                </button>
-              </div>
-            </div>
-          </nav>
+            </nav>
+          )}
 
-          <main className="pt-32 pb-24 min-h-[80vh]">
+          <main className={isClientView ? "pt-32 pb-24 min-h-[80vh]" : "min-h-screen"}>
             
             {view === 'store' && (
               <div className="animate-in fade-in duration-[1000ms]">
@@ -414,18 +431,20 @@ export default function App() {
             )}
 
             {view === 'admin-login' && (
-              <div className="max-w-md mx-auto px-8 py-32">
+              <div className="max-w-md mx-auto px-8 py-32 flex flex-col justify-center h-screen animate-in fade-in">
                 <h2 className="text-4xl font-serif mb-2">Staff Portal.</h2>
-                <form onSubmit={handleLogin} className="space-y-8 mt-16">
+                <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-8 border-b border-[#E5E0D8] pb-4">Authorized Personnel Only</p>
+                <form onSubmit={handleLogin} className="space-y-8 mt-8">
                   <input type="text" placeholder="Identification" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none" required />
                   <input type="password" placeholder="Passcode" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none" required />
                   <button type="submit" className="w-full bg-[#1A1A1A] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 mt-8 hover:bg-[#2C3D30]">Authenticate</button>
                 </form>
+                <button onClick={() => { window.history.pushState({}, '', '/'); setView('store'); }} className="mt-12 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Return to Storefront</button>
               </div>
             )}
 
             {view === 'admin-dashboard' && (
-              <div className="max-w-[90rem] mx-auto px-8 md:px-16 animate-in fade-in">
+              <div className="max-w-[90rem] mx-auto px-8 md:px-16 pt-16 pb-32 animate-in fade-in">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 border-b border-[#1A1A1A] pb-8 gap-6">
                   <div>
                     <h2 className="text-5xl font-serif mb-4">Master Ledger</h2>
@@ -436,12 +455,15 @@ export default function App() {
                       <button onClick={() => setAdminTab('categories')} className={`pb-2 ${adminTab === 'categories' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Categories</button>
                     </div>
                   </div>
-                  {adminTab === 'ledger' && (
-                    <div className="flex gap-4">
-                      <button onClick={() => setShowNewEntryModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-6 py-3 hover:bg-[#2C3D30]">Add Product <Plus size={12} className="inline"/></button>
-                      <button onClick={() => setShowCSVModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] text-[#1A1A1A] px-6 py-3 hover:bg-[#1A1A1A] hover:text-[#F7F5F0] border border-[#1A1A1A]/10">Bulk CSV</button>
-                    </div>
-                  )}
+                  <div className="flex gap-4 items-center">
+                    {adminTab === 'ledger' && (
+                      <div className="flex gap-4">
+                        <button onClick={() => setShowNewEntryModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-6 py-3 hover:bg-[#2C3D30]">Add Product <Plus size={12} className="inline"/></button>
+                        <button onClick={() => setShowCSVModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] text-[#1A1A1A] px-6 py-3 hover:bg-[#1A1A1A] hover:text-[#F7F5F0] border border-[#1A1A1A]/10">Bulk CSV</button>
+                      </div>
+                    )}
+                    <button onClick={() => { setIsAuthenticated(false); setView('store'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-red-800 ml-8">Logout</button>
+                  </div>
                 </div>
 
                 {adminTab === 'categories' && (
@@ -516,13 +538,17 @@ export default function App() {
             )}
           </main>
 
-          <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
-            <div className="max-w-[90rem] mx-auto px-8 flex justify-between items-center">
-              <div className="flex flex-col items-center md:items-start shrink-0"><BrandLogo /><span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50 mt-1">Plants & Ceramics</span></div>
-              <button onClick={() => setView('admin-login')} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Staff Portal</button>
-            </div>
-          </footer>
+          {/* THE FIX: Footer is completely hidden if you are in the Admin Panel */}
+          {isClientView && (
+            <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
+              <div className="max-w-[90rem] mx-auto px-8 flex justify-between items-center">
+                <div className="flex flex-col items-center md:items-start shrink-0"><BrandLogo /><span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50 mt-1">Plants & Ceramics</span></div>
+                <button onClick={() => setView('admin-login')} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Staff Portal</button>
+              </div>
+            </footer>
+          )}
 
+          {/* MISSING MODALS */}
           {showNewEntryModal && (
             <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
               <div className="bg-[#F7F5F0] p-12 max-w-2xl w-full border border-[#E5E0D8] shadow-2xl relative">
