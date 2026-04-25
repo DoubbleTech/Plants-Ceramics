@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, ArrowLeft, Check, Lock, MoveRight, MapPin, Map, RefreshCw, X } from 'lucide-react';
-import Swal from 'sweetalert2'; // <-- SWEETALERT IMPORTED HERE
+import { Plus, ArrowLeft, Lock, MoveRight, MapPin, RefreshCw, X, Download, GripVertical, CheckSquare, Edit } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 const API_BASE = `/api`;
 const formatPrice = (price) => `PKR ${Number(price).toLocaleString()}`;
@@ -27,57 +27,54 @@ export default function App() {
 
   const [orders, setOrders] = useState([]);
   const [currentOrder, setCurrentOrder] = useState(null);
-  const [checkoutForm, setCheckoutForm] = useState({ name: '', email: '', phone: '', address: '', paymentMethod: 'COD' });
+  
+  // Updated Checkout State
+  const [checkoutForm, setCheckoutForm] = useState({ 
+    name: '', email: '', phone: '', address: '', 
+    mapLink: '', addressType: 'Home', secretCode: '', 
+    instructions: '', paymentMethod: 'COD', receipt: null 
+  });
 
-  // Admin State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [adminTab, setAdminTab] = useState('ledger'); 
   const [isFetchingOrders, setIsFetchingOrders] = useState(false);
   
-  // Modals & Forms
-  const [showNewEntryModal, setShowNewEntryModal] = useState(false);
+  const [showEntryModal, setShowEntryModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [newEntryForm, setNewEntryForm] = useState({
-    name: '', category: 'Indoor Plant', price: '', stockCity: '', image: '🪴', desc: ''
-  });
+  const [entryForm, setEntryForm] = useState({ id: null, name: '', category: 'Indoor Plant', price: '', stockCity: '', image: '🪴', desc: '' });
 
-  // --- FETCH INITIAL DATA ---
+  // Bulk Edit State
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
+  // Drag & Drop State
+  const [draggedCityIdx, setDraggedCityIdx] = useState(null);
+
   useEffect(() => {
     fetch(`${API_BASE}/catalog`)
-      .then(res => {
-        if (!res.ok) throw new Error("Backend offline");
-        return res.json();
-      })
+      .then(res => { if (!res.ok) throw new Error("Offline"); return res.json(); })
       .then(data => {
-        if(data.products && data.products.length > 0) setProducts(data.products);
+        if(data.products) setProducts(data.products);
         if(data.cities && data.cities.length > 0) setCities(data.cities);
         if(data.categories && data.categories.length > 0) setCategories(data.categories);
-      })
-      .catch(err => console.error("Database unavailable:", err));
+      }).catch(err => console.error(err));
   }, []);
 
   const fetchOrders = async () => {
     setIsFetchingOrders(true);
     try {
       const res = await fetch(`${API_BASE}/admin/orders`);
-      if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
       setOrders(data);
-      Swal.fire({ icon: 'success', title: 'Synced', text: 'Latest orders fetched from the database!', confirmButtonColor: '#1A1A1A' });
-    } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Sync Failed', text: 'Error fetching data! The server might be unreachable.', confirmButtonColor: '#1A1A1A' });
-    }
+      Swal.fire({ icon: 'success', title: 'Synced', text: 'Latest orders fetched!', confirmButtonColor: '#1A1A1A' });
+    } catch (err) { Swal.fire({ icon: 'error', title: 'Sync Failed', text: 'Server unreachable.', confirmButtonColor: '#1A1A1A' }); }
     setTimeout(() => setIsFetchingOrders(false), 500); 
   };
 
-  useEffect(() => {
-    if (isAuthenticated && adminTab === 'orders') fetchOrders();
-  }, [isAuthenticated, adminTab]);
-
+  useEffect(() => { if (isAuthenticated && adminTab === 'orders') fetchOrders(); }, [isAuthenticated, adminTab]);
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
     window.addEventListener('scroll', handleScroll);
@@ -103,11 +100,24 @@ export default function App() {
     });
   };
   const removeFromCart = (id) => setCart(prev => prev.filter(item => item.id !== id && item._id !== id));
+  
   const handleCheckoutChange = (e) => setCheckoutForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  
+  const handleReceiptUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setCheckoutForm(prev => ({ ...prev, receipt: reader.result }));
+      reader.readAsDataURL(file);
+    }
+  };
 
-  // --- SUBMIT ORDER & DEDUCT STOCK ---
   const submitOrder = async (e) => {
     e.preventDefault();
+    if (checkoutForm.paymentMethod === 'TRF' && !checkoutForm.receipt) {
+      return Swal.fire({ icon: 'warning', title: 'Receipt Required', text: 'Please attach your bank transfer screenshot.', confirmButtonColor: '#1A1A1A' });
+    }
+
     const orderNum = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
     const newOrder = { orderNumber: orderNum, date: new Date().toLocaleString(), items: [...cart], totalAmount: cartTotal, customer: checkoutForm, city: selectedCity };
 
@@ -128,6 +138,7 @@ export default function App() {
     
     setOrders(prev => [newOrder, ...prev]);
 
+    // EMAIL JS CONFIGURATION
     const emailParams = {
       service_id: 'service_hyfp919', 
       template_id: 'template_nlst9qp',
@@ -135,12 +146,13 @@ export default function App() {
       template_params: {
         order_number: orderNum, customer_name: checkoutForm.name, customer_email: checkoutForm.email,
         phone: checkoutForm.phone, city: selectedCity, address: checkoutForm.address,
+        address_type: checkoutForm.addressType, map_link: checkoutForm.mapLink, secret_code: checkoutForm.secretCode,
         total: formatPrice(cartTotal), items: cart.map(i => `${i.qty}x ${i.name}`).join(', ')
       }
     };
     fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(emailParams) }).catch(e=>e);
 
-    const waText = encodeURIComponent(`🌿 *New P&C Order: ${orderNum}*\n\n*Client:* ${checkoutForm.name}\n*Phone:* ${checkoutForm.phone}\n*Address:* ${checkoutForm.address}, ${selectedCity}\n\n*Items:*\n${cart.map(item => `- ${item.qty}x ${item.name}`).join('\n')}\n\n*Total:* ${formatPrice(cartTotal)}\n*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`);
+    const waText = encodeURIComponent(`🌿 *New P&C Order: ${orderNum}*\n\n*Client:* ${checkoutForm.name}\n*Phone:* ${checkoutForm.phone}\n*Type:* ${checkoutForm.addressType}\n*Address:* ${checkoutForm.address}, ${selectedCity}\n*Map Link:* ${checkoutForm.mapLink || 'N/A'}\n*Secret Code:* ${checkoutForm.secretCode || 'N/A'}\n*Instructions:* ${checkoutForm.instructions || 'None'}\n\n*Items:*\n${cart.map(item => `- ${item.qty}x ${item.name}`).join('\n')}\n\n*Total:* ${formatPrice(cartTotal)}\n*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`);
     window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); 
 
     setCurrentOrder(newOrder); setCart([]); setView('order-success');
@@ -149,51 +161,41 @@ export default function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE}/admin/login`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ username, password }) 
-      });
-      
-      if (res.ok) { 
-        setIsAuthenticated(true); 
-        setView('admin-dashboard'); 
-      } else {
-        Swal.fire({ icon: 'error', title: 'Access Denied', text: 'Incorrect Identification or Passcode.', confirmButtonColor: '#1A1A1A' });
-      }
+      const res = await fetch(`${API_BASE}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+      if (res.ok) { setIsAuthenticated(true); setView('admin-dashboard'); }
+      else { Swal.fire({ icon: 'error', title: 'Access Denied', text: 'Incorrect Credentials.', confirmButtonColor: '#1A1A1A' }); }
     } catch (err) { 
-      if (username === 'admin' && password === 'Umarali667@') { 
-        setIsAuthenticated(true); 
-        setView('admin-dashboard'); 
-      } else {
-        Swal.fire({ icon: 'error', title: 'Connection Error', text: 'Authentication failed. Could not connect to server.', confirmButtonColor: '#1A1A1A' });
-      }
+      if (username === 'admin' && password === 'Umarali667@') { setIsAuthenticated(true); setView('admin-dashboard'); } 
     }
+  };
+
+  // --- DRAG AND DROP CITIES ---
+  const handleDropCity = async (dropIdx) => {
+    if (draggedCityIdx === null || draggedCityIdx === dropIdx) return;
+    const newCities = [...cities];
+    const [draggedItem] = newCities.splice(draggedCityIdx, 1);
+    newCities.splice(dropIdx, 0, draggedItem);
+    setCities(newCities);
+    setDraggedCityIdx(null);
+    try { await fetch(`${API_BASE}/admin/cities/reorder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cities: newCities }) }); } catch(e){}
   };
 
   const submitNewCity = async (e) => {
     e.preventDefault();
     const c = newCityName.trim();
     if (c && !cities.includes(c)) {
-      setCities(prev => [...prev, c].sort());
+      setCities(prev => [...prev, c]);
       try {
         await fetch(`${API_BASE}/admin/cities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) });
-        Swal.fire({ icon: 'success', title: 'Region Added', text: `Success! Region "${c}" has been securely added to the database.`, confirmButtonColor: '#1A1A1A' });
-      } catch (err) { 
-        Swal.fire({ icon: 'error', title: 'Error', text: 'Database error while adding region.', confirmButtonColor: '#1A1A1A' }); 
-      }
+        Swal.fire({ icon: 'success', title: 'Region Added', confirmButtonColor: '#1A1A1A' });
+      } catch (err) {}
     }
     setNewCityName('');
   };
 
   const deleteCity = async (cityName) => {
     setCities(prev => prev.filter(c => c !== cityName));
-    try { 
-      await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' }); 
-      Swal.fire({ icon: 'info', title: 'Deleted', text: `Region "${cityName}" has been removed.`, confirmButtonColor: '#1A1A1A' });
-    } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Error', text: 'Could not delete region from database.', confirmButtonColor: '#1A1A1A' });
-    }
+    try { await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' }); } catch (err) {}
   };
 
   const submitNewCategory = async (e) => {
@@ -201,45 +203,75 @@ export default function App() {
     const c = newCategoryName.trim();
     if (c && !categories.includes(c)) {
       setCategories(prev => [...prev, c].sort());
-      try {
-        await fetch(`${API_BASE}/admin/categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) });
-        Swal.fire({ icon: 'success', title: 'Category Added', text: `Success! Category "${c}" added.`, confirmButtonColor: '#1A1A1A' });
-      } catch (err) { 
-        Swal.fire({ icon: 'error', title: 'Error', text: 'Database error while adding category.', confirmButtonColor: '#1A1A1A' }); 
-      }
+      try { await fetch(`${API_BASE}/admin/categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) }); } catch (err) {}
     }
     setNewCategoryName('');
   };
-
   const deleteCategory = async (catName) => {
     setCategories(prev => prev.filter(c => c !== catName));
-    try { 
-      await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); 
-      Swal.fire({ icon: 'info', title: 'Deleted', text: `Category "${catName}" has been removed.`, confirmButtonColor: '#1A1A1A' });
-    } catch (err) {
-       Swal.fire({ icon: 'error', title: 'Error', text: 'Could not delete category.', confirmButtonColor: '#1A1A1A' });
+    try { await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); } catch (err) {}
+  };
+
+  // --- ADD / EDIT PRODUCTS ---
+  const openEditModal = (product) => {
+    setEntryForm({ id: product._id || product.id, name: product.name, category: product.category, price: product.price, stockCity: product.stock?.[cities[0]] || 0, image: product.imageUrls[0], desc: product.shortDesc || '' });
+    setIsEditing(true);
+    setShowEntryModal(true);
+  };
+
+  const submitEntry = async (e) => {
+    e.preventDefault();
+    const initializedStock = {};
+    cities.forEach(c => initializedStock[c] = Number(entryForm.stockCity) || 0);
+
+    const payload = { name: entryForm.name, category: entryForm.category, price: Number(entryForm.price) || 0, stock: initializedStock, imageUrls: [entryForm.image || "🪴"], shortDesc: entryForm.desc };
+    
+    try {
+      if (isEditing) {
+        const res = await fetch(`${API_BASE}/admin/products/${entryForm.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const updated = await res.json();
+        setProducts(prev => prev.map(p => (p._id === updated._id || p.id === updated.id) ? updated : p));
+        Swal.fire({ icon: 'success', title: 'Product Updated', confirmButtonColor: '#1A1A1A' });
+      } else {
+        const res = await fetch(`${API_BASE}/admin/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const saved = await res.json();
+        setProducts(prev => [saved, ...prev]);
+        Swal.fire({ icon: 'success', title: 'Product Added', confirmButtonColor: '#1A1A1A' });
+      }
+    } catch (err) { Swal.fire({ icon: 'error', title: 'Error saving product' }); }
+    setShowEntryModal(false);
+  };
+
+  const deleteProduct = async (id) => {
+    setProducts(prev => prev.filter(p => p.id !== id && p._id !== id));
+    try { await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' }); } catch(err) {}
+  };
+
+  // --- BULK SELECTION ---
+  const toggleSelectProduct = (id) => {
+    setSelectedProductIds(prev => prev.includes(id) ? prev.filter(pId => pId !== id) : [...prev, id]);
+  };
+  const toggleSelectAll = () => {
+    if (selectedProductIds.length === products.length) setSelectedProductIds([]);
+    else setSelectedProductIds(products.map(p => p._id || p.id));
+  };
+  const handleBulkDelete = async () => {
+    if(!selectedProductIds.length) return;
+    const result = await Swal.fire({ title: 'Are you sure?', text: `Delete ${selectedProductIds.length} items?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#1A1A1A', confirmButtonText: 'Yes, delete them!' });
+    if(result.isConfirmed) {
+      setProducts(prev => prev.filter(p => !selectedProductIds.includes(p._id || p.id)));
+      try {
+        await fetch(`${API_BASE}/admin/products/bulk-delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: selectedProductIds }) });
+        Swal.fire('Deleted!', 'Items removed.', 'success');
+      } catch(e) {}
+      setSelectedProductIds([]);
     }
   };
 
-  const submitNewEntry = async (e) => {
-    e.preventDefault();
-    const initializedStock = {};
-    cities.forEach(c => initializedStock[c] = Number(newEntryForm.stockCity) || 0);
-
-    const newProduct = {
-      name: newEntryForm.name, category: newEntryForm.category, price: Number(newEntryForm.price) || 0,
-      stock: initializedStock, imageUrls: [newEntryForm.image || "🪴"], shortDesc: newEntryForm.desc
-    };
-    
-    try {
-      const res = await fetch(`${API_BASE}/admin/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newProduct) });
-      const savedProduct = await res.json();
-      setProducts(prev => [savedProduct, ...prev]);
-      Swal.fire({ icon: 'success', title: 'Product Added', text: `Product "${savedProduct.name}" added to database.`, confirmButtonColor: '#1A1A1A' });
-    } catch (err) { 
-      Swal.fire({ icon: 'error', title: 'Error', text: 'Error saving product.', confirmButtonColor: '#1A1A1A' }); 
-    }
-    setShowNewEntryModal(false);
+  // --- CSV UPLOAD & SAMPLE ---
+  const downloadSampleCSV = () => {
+    const csvContent = "data:text/csv;charset=utf-8,Name,Image,Category,Price,Description,StockKarachi,StockIslamabad\nMonstera,🪴,Indoor Plant,1500,Beautiful green plant,10,5\nTerracotta Pot,🏺,Ceramic Pot,500,Clay pot,20,0";
+    window.open(encodeURI(csvContent));
   };
 
   const handleCSVUpload = (e) => {
@@ -252,33 +284,20 @@ export default function App() {
         const parsedProducts = rows.map(row => {
           const cols = row.split(',');
           if(cols.length < 5) return null;
-          return { name: cols[0], imageUrls: [cols[1] || '🌿'], shortDesc: cols[4], price: Number(cols[6]) || 0, category: cols[10] || 'Indoor Plant', stock: { "Karachi": Number(cols[12]) || 0 } };
+          return { name: cols[0], imageUrls: [cols[1] || '🪴'], category: cols[2], price: Number(cols[3]) || 0, shortDesc: cols[4], stock: { "Karachi": Number(cols[5]) || 0, "Islamabad": Number(cols[6]) || 0 } };
         }).filter(Boolean);
         setProducts(prev => [...parsedProducts, ...prev]);
         try {
           await fetch(`${API_BASE}/admin/products/bulk`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products: parsedProducts }) });
-          Swal.fire({ icon: 'success', title: 'Upload Complete', text: 'Bulk CSV Upload Successful!', confirmButtonColor: '#1A1A1A' });
-        } catch(err) {
-          Swal.fire({ icon: 'error', title: 'Upload Failed', text: 'Failed to save bulk products.', confirmButtonColor: '#1A1A1A' });
-        }
+          Swal.fire({ icon: 'success', title: 'Bulk Upload Successful!', confirmButtonColor: '#1A1A1A' });
+        } catch(err) {}
         setShowCSVModal(false);
       };
       reader.readAsText(file);
     }
   };
 
-  const deleteProduct = async (id) => {
-    setProducts(prev => prev.filter(p => p.id !== id && p._id !== id));
-    try { 
-      await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' }); 
-      Swal.fire({ icon: 'info', title: 'Deleted', text: 'Product removed from ledger.', confirmButtonColor: '#1A1A1A' });
-    } catch(err) {}
-  };
-
-  const BrandLogo = () => (
-    <img src="/logo.png" alt="Plants & Ceramics" className="h-12 md:h-16 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
-  );
-
+  const BrandLogo = () => <img src="/logo.png" alt="Plants & Ceramics" className="h-12 md:h-16 object-contain" />;
   const isClientView = !view.includes('admin');
 
   return (
@@ -287,7 +306,7 @@ export default function App() {
       {view === 'city-select' && (
         <div className="min-h-screen flex flex-col items-center justify-center animate-in fade-in duration-[1500ms] p-8">
           <div className="text-center max-w-xl w-full">
-            <div className="flex justify-center mb-8"><BrandLogo /><div className="hidden items-center gap-2 text-4xl font-serif">🌿 P&C.</div></div>
+            <div className="flex justify-center mb-8"><BrandLogo /></div>
             <h1 className="text-4xl md:text-6xl font-serif leading-[1.1] tracking-tight mb-6 mt-8">Select your region.</h1>
             <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-16 border-b border-[#E5E0D8] pb-8">We curate specific logistics and inventory for each territory.</p>
             <div className="flex flex-col gap-4">
@@ -297,7 +316,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button onClick={() => setView('admin-login')} className="mt-24 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A] flex items-center justify-center gap-1.5 w-full"><Lock size={10} /> Staff Portal</button>
+            {/* FEATURE: Staff Portal Link Removed from here! */}
           </div>
         </div>
       )}
@@ -311,12 +330,10 @@ export default function App() {
                   <button onClick={() => setView('store')} className="hover:text-[#1A1A1A]">Collection</button>
                 </div>
                 <div className="absolute left-1/2 -translate-x-1/2 cursor-pointer group" onClick={() => setView('store')}>
-                  <BrandLogo /><div className="hidden items-center gap-2 text-2xl font-serif group-hover:-rotate-12 transition-transform duration-500">🌿 P&C.</div>
+                  <BrandLogo />
                 </div>
                 <div className="flex items-center gap-8">
-                  {selectedCity && (
-                    <button onClick={() => setView('city-select')} className="hidden md:flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><MapPin size={10} /> {selectedCity}</button>
-                  )}
+                  {selectedCity && <button onClick={() => setView('city-select')} className="hidden md:flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><MapPin size={10} /> {selectedCity}</button>}
                   <button onClick={() => setView('cart')} className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] font-medium hover:text-[#2C3D30]">
                     <span>Bag ({cart.reduce((sum, item) => sum + item.qty, 0)})</span>
                   </button>
@@ -415,6 +432,7 @@ export default function App() {
               </div>
             )}
 
+            {/* FEATURE: Expanded Checkout Form */}
             {view === 'checkout' && (
               <div className="max-w-5xl mx-auto px-8 md:px-16 animate-in fade-in">
                 <h2 className="text-5xl font-serif mb-16 border-b border-[#1A1A1A] pb-8">Logistics</h2>
@@ -422,10 +440,37 @@ export default function App() {
                   <div className="lg:col-span-7 space-y-12">
                     <div className="space-y-8">
                       <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#E5E0D8] pb-4">Client Info</h3>
-                      <input type="text" name="name" required placeholder="Full Name *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm tracking-wider focus:outline-none focus:border-[#1A1A1A]" />
-                      <input type="email" name="email" required placeholder="Email *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm tracking-wider focus:outline-none focus:border-[#1A1A1A]" />
-                      <input type="tel" name="phone" required placeholder="Phone *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm tracking-wider focus:outline-none focus:border-[#1A1A1A]" />
-                      <input type="text" name="address" required placeholder="Address *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm tracking-wider focus:outline-none focus:border-[#1A1A1A]" />
+                      <div className="grid grid-cols-2 gap-6">
+                        <input type="text" name="name" required placeholder="Full Name *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                        <input type="email" name="email" required placeholder="Email *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-6">
+                        <input type="tel" name="phone" required placeholder="Phone *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                        <input type="text" name="secretCode" placeholder="Secret Rider Code (Optional)" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                      </div>
+                      
+                      <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#E5E0D8] pb-4 mt-12">Delivery Details</h3>
+                      <div className="flex gap-8 mb-4">
+                         <label className="text-sm flex items-center gap-2"><input type="radio" name="addressType" value="Home" defaultChecked onChange={handleCheckoutChange} className="accent-[#1A1A1A]" /> Home</label>
+                         <label className="text-sm flex items-center gap-2"><input type="radio" name="addressType" value="Office" onChange={handleCheckoutChange} className="accent-[#1A1A1A]" /> Office</label>
+                      </div>
+                      <input type="text" name="address" required placeholder="Complete Delivery Address *" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                      <input type="text" name="mapLink" placeholder="Google Maps Link (Recommended)" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                      <textarea name="instructions" placeholder="Special Instructions for Delivery..." onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A] mt-4" rows="2"></textarea>
+                      
+                      <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#E5E0D8] pb-4 mt-12">Payment</h3>
+                      <select name="paymentMethod" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A]">
+                        <option value="COD">Cash on Delivery</option>
+                        <option value="TRF">Bank Transfer</option>
+                      </select>
+
+                      {checkoutForm.paymentMethod === 'TRF' && (
+                         <div className="bg-[#EBE6E0] p-6 border border-[#1A1A1A]/20 mt-4 animate-in fade-in">
+                            <p className="text-sm mb-4">Transfer to: <strong>Meezan Bank | A/C 0123456789 | Doubble Tech</strong></p>
+                            <label className="text-[10px] uppercase tracking-[0.2em] font-bold block mb-2">Upload Transfer Screenshot *</label>
+                            <input type="file" accept="image/*" required onChange={handleReceiptUpload} className="text-sm w-full" />
+                         </div>
+                      )}
                     </div>
                   </div>
                   <div className="lg:col-span-5">
@@ -443,7 +488,7 @@ export default function App() {
                 <div className="flex justify-center mb-12"><BrandLogo /></div>
                 <h2 className="text-6xl font-serif mb-8 text-[#2C3D30]">Acquired.</h2>
                 <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-6">Reference: <span className="bg-[#1A1A1A] text-white px-2 py-1 font-bold">{currentOrder.orderNumber || currentOrder.id}</span></p>
-                <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">Your selections have been reserved for dispatch in {selectedCity}.<br/><br/>Please prepare {formatPrice(cartTotal)} for Cash on Delivery.</p>
+                <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">Your selections have been reserved for dispatch in {selectedCity}.<br/><br/>Please prepare {formatPrice(cartTotal)}.</p>
                 <button onClick={() => setView('store')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30]">Return to Collection</button>
               </div>
             )}
@@ -476,7 +521,10 @@ export default function App() {
                   <div className="flex gap-4 items-center">
                     {adminTab === 'ledger' && (
                       <div className="flex gap-4">
-                        <button onClick={() => setShowNewEntryModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-6 py-3 hover:bg-[#2C3D30]">Add Product <Plus size={12} className="inline"/></button>
+                        {selectedProductIds.length > 0 && (
+                          <button onClick={handleBulkDelete} className="text-[10px] uppercase tracking-[0.2em] bg-red-900 text-white px-6 py-3 hover:bg-red-700 transition-colors">Delete Selected ({selectedProductIds.length})</button>
+                        )}
+                        <button onClick={() => { setIsEditing(false); setEntryForm({ id: null, name: '', category: categories[1], price: '', stockCity: '', image: '🪴', desc: '' }); setShowEntryModal(true); }} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-6 py-3 hover:bg-[#2C3D30]">Add Product <Plus size={12} className="inline"/></button>
                         <button onClick={() => setShowCSVModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] text-[#1A1A1A] px-6 py-3 hover:bg-[#1A1A1A] hover:text-[#F7F5F0] border border-[#1A1A1A]/10">Bulk CSV</button>
                       </div>
                     )}
@@ -501,16 +549,25 @@ export default function App() {
                   </div>
                 )}
 
+                {/* FEATURE: DRAG AND DROP CITIES */}
                 {adminTab === 'cities' && (
                   <div className="max-w-3xl animate-in fade-in">
                     <form onSubmit={submitNewCity} className="mb-12 flex gap-4">
                       <input type="text" placeholder="New Region Name..." value={newCityName} onChange={e => setNewCityName(e.target.value)} className="flex-1 bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none" required/>
                       <button type="submit" className="bg-[#1A1A1A] text-white px-8 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30]">Add Region</button>
                     </form>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-4">Drag and drop to reorder</p>
                     <div className="space-y-4">
-                      {cities.map(city => (
-                        <div key={city} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8] shadow-sm">
-                          <span className="text-lg font-serif">{city}</span>
+                      {cities.map((city, idx) => (
+                        <div 
+                          key={city} 
+                          draggable 
+                          onDragStart={() => setDraggedCityIdx(idx)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => handleDropCity(idx)}
+                          className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8] shadow-sm cursor-grab active:cursor-grabbing hover:border-[#1A1A1A]/30 transition-colors"
+                        >
+                          <span className="text-lg font-serif flex items-center gap-4"><GripVertical size={16} className="text-[#1A1A1A]/30" /> {city}</span>
                           <button onClick={() => deleteCity(city)} className="text-[10px] uppercase tracking-[0.2em] text-red-900 hover:text-red-700">Remove</button>
                         </div>
                       ))}
@@ -530,23 +587,55 @@ export default function App() {
                       orders.map(order => (
                         <div key={order.orderNumber || order.id} className="bg-white p-8 border border-[#E5E0D8] shadow-sm">
                           <h3 className="text-2xl font-serif mb-4">{order.orderNumber || order.id} <span className="text-sm tracking-widest text-[#1A1A1A]/50 float-right">{formatPrice(order.totalAmount || order.total)}</span></h3>
-                          <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Client:</strong> {order.customer?.name} | {order.customer?.phone} | {order.city}</p>
-                          <p className="text-sm text-[#1A1A1A]/70 mb-4"><strong>Items:</strong> {order.items?.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm text-[#1A1A1A]/80">
+                             <div>
+                                <p className="mb-2"><strong>Client:</strong> {order.customer?.name}</p>
+                                <p className="mb-2"><strong>Contact:</strong> {order.customer?.phone} | {order.customer?.email}</p>
+                                <p className="mb-2"><strong>Address:</strong> {order.customer?.addressType} - {order.customer?.address}, {order.city}</p>
+                                {order.customer?.mapLink && <p className="mb-2"><strong>Map:</strong> <a href={order.customer.mapLink} target="_blank" rel="noreferrer" className="text-blue-600 underline">View Location</a></p>}
+                                {order.customer?.instructions && <p className="mb-2"><strong>Note:</strong> {order.customer.instructions}</p>}
+                             </div>
+                             <div>
+                                <p className="mb-2"><strong>Payment:</strong> {order.customer?.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}</p>
+                                {order.customer?.secretCode && <p className="mb-2"><strong>Secret Code:</strong> <span className="font-mono bg-yellow-100 px-2 font-bold">{order.customer.secretCode}</span></p>}
+                                <p className="mb-2"><strong>Items:</strong> {order.items?.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+                                {order.customer?.receipt && (
+                                   <div className="mt-4">
+                                      <p className="font-bold mb-2">Transfer Receipt:</p>
+                                      <img src={order.customer.receipt} alt="Receipt" className="max-w-[200px] border border-[#E5E0D8] cursor-pointer" onClick={() => window.open(order.customer.receipt)} />
+                                   </div>
+                                )}
+                             </div>
+                          </div>
                         </div>
                       ))
                     )}
                   </div>
                 )}
 
+                {/* FEATURE: INDIVIDUAL EDIT AND BULK CHECKBOXES */}
                 {adminTab === 'ledger' && (
                   <table className="w-full text-left text-sm animate-in fade-in">
-                    <thead><tr className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#E5E0D8]"><th className="pb-6">Designation</th><th className="pb-6">Valuation</th><th className="pb-6 text-right">Actions</th></tr></thead>
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#E5E0D8]">
+                        <th className="pb-6 w-12 text-center cursor-pointer" onClick={toggleSelectAll}><CheckSquare size={14} className={selectedProductIds.length === products.length && products.length > 0 ? "text-[#1A1A1A]" : ""} /></th>
+                        <th className="pb-6">Designation</th>
+                        <th className="pb-6">Valuation</th>
+                        <th className="pb-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {products.map(p => (
-                        <tr key={p.id || p._id} className="border-b border-[#E5E0D8] hover:bg-white transition-colors">
+                        <tr key={p.id || p._id} className={`border-b border-[#E5E0D8] hover:bg-white transition-colors ${selectedProductIds.includes(p.id || p._id) ? 'bg-gray-50' : ''}`}>
+                          <td className="py-6 text-center cursor-pointer" onClick={() => toggleSelectProduct(p.id || p._id)}>
+                             <input type="checkbox" checked={selectedProductIds.includes(p.id || p._id)} readOnly className="accent-[#1A1A1A]" />
+                          </td>
                           <td className="py-6 font-serif text-lg px-2">{p.name} <span className="text-[10px] uppercase tracking-widest text-[#1A1A1A]/40 ml-4 hidden md:inline">{p.category.replace("_", " ")}</span></td>
                           <td className="py-6 tracking-widest">{formatPrice(p.price)}</td>
-                          <td className="py-6 text-right px-2"><button onClick={() => deleteProduct(p.id || p._id)} className="text-red-900 text-[10px] uppercase tracking-[0.2em] hover:text-red-700">Delete</button></td>
+                          <td className="py-6 text-right px-2 flex justify-end gap-6 items-center">
+                             <button onClick={() => openEditModal(p)} className="text-[#1A1A1A]/50 hover:text-[#1A1A1A] flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]"><Edit size={12}/> Edit</button>
+                             <button onClick={() => deleteProduct(p.id || p._id)} className="text-red-900 text-[10px] uppercase tracking-[0.2em] hover:text-red-700">Delete</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -565,41 +654,47 @@ export default function App() {
             </footer>
           )}
 
-          {/* MISSING MODALS */}
-          {showNewEntryModal && (
+          {/* EDIT / ADD MODAL */}
+          {showEntryModal && (
             <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
               <div className="bg-[#F7F5F0] p-12 max-w-2xl w-full border border-[#E5E0D8] shadow-2xl relative">
-                <button onClick={() => setShowNewEntryModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
-                <h2 className="text-4xl font-serif mb-8 border-b border-[#1A1A1A]/10 pb-4">New Product.</h2>
-                <form onSubmit={submitNewEntry} className="space-y-6">
+                <button onClick={() => setShowEntryModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
+                <h2 className="text-4xl font-serif mb-8 border-b border-[#1A1A1A]/10 pb-4">{isEditing ? 'Edit Product.' : 'New Product.'}</h2>
+                <form onSubmit={submitEntry} className="space-y-6">
                   <div className="grid grid-cols-2 gap-6">
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Name</label><input type="text" required onChange={e=>setNewEntryForm({...newEntryForm, name: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" /></div>
+                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Name</label><input type="text" required value={entryForm.name} onChange={e=>setEntryForm({...entryForm, name: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" /></div>
                     <div>
                       <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Category</label>
-                      <select onChange={e=>setNewEntryForm({...newEntryForm, category: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none">
+                      <select value={entryForm.category} onChange={e=>setEntryForm({...entryForm, category: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none">
                         {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
                       </select>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-6">
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Price (PKR)</label><input type="number" required onChange={e=>setNewEntryForm({...newEntryForm, price: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Initial Stock Amount</label><input type="number" required onChange={e=>setNewEntryForm({...newEntryForm, stockCity: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Image Emoji/URL</label><input type="text" defaultValue="🪴" onChange={e=>setNewEntryForm({...newEntryForm, image: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
+                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Price (PKR)</label><input type="number" required value={entryForm.price} onChange={e=>setEntryForm({...entryForm, price: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
+                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Initial Stock Amount</label><input type="number" required value={entryForm.stockCity} onChange={e=>setEntryForm({...entryForm, stockCity: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
+                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Image Emoji/URL</label><input type="text" value={entryForm.image} onChange={e=>setEntryForm({...entryForm, image: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
                   </div>
-                  <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Description</label><textarea required onChange={e=>setNewEntryForm({...newEntryForm, desc: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none h-24" /></div>
-                  <button type="submit" className="w-full bg-[#1A1A1A] text-white py-4 text-[10px] uppercase tracking-[0.3em] hover:bg-[#2C3D30] transition-colors mt-8">Add to Ledger</button>
+                  <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Description</label><textarea required value={entryForm.desc} onChange={e=>setEntryForm({...entryForm, desc: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none h-24" /></div>
+                  <button type="submit" className="w-full bg-[#1A1A1A] text-white py-4 text-[10px] uppercase tracking-[0.3em] hover:bg-[#2C3D30] transition-colors mt-8">{isEditing ? 'Save Changes' : 'Add to Ledger'}</button>
                 </form>
               </div>
             </div>
           )}
 
+          {/* FEATURE: CSV SAMPLE DOWNLOADER */}
           {showCSVModal && (
             <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
               <div className="bg-[#F7F5F0] p-12 max-w-xl w-full border border-[#E5E0D8] shadow-2xl relative text-center">
                  <button onClick={() => setShowCSVModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
                  <h2 className="text-4xl font-serif mb-4">Bulk Import.</h2>
                  <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-8">Upload a CSV file to inject multiple products instantly.</p>
-                 <div className="border-2 border-dashed border-[#1A1A1A]/20 p-12 hover:border-[#1A1A1A] transition-colors relative cursor-pointer">
+                 
+                 <button onClick={downloadSampleCSV} className="flex items-center justify-center gap-2 mx-auto mb-8 text-sm border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] transition-colors">
+                    <Download size={14} /> Download Sample Format
+                 </button>
+
+                 <div className="border-2 border-dashed border-[#1A1A1A]/20 p-12 hover:border-[#1A1A1A] transition-colors relative cursor-pointer bg-white">
                     <input type="file" accept=".csv" onChange={handleCSVUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                     <span className="text-sm font-medium">Click to Browse or Drag CSV Here</span>
                  </div>
