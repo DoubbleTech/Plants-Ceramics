@@ -1,19 +1,17 @@
 /**
  * Plants & Ceramics - Full Stack API
- * Run this on your VPS using PM2: pm2 start server.js --name "plants-api"
  */
 
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-require('dotenv').config();
 
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/plants_ceramics', {
+mongoose.connect('mongodb://localhost:27017/plants_ceramics', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 }).then(() => console.log('🌿 Connected to MongoDB Database'))
@@ -49,6 +47,8 @@ const taxonomySchema = new mongoose.Schema({
 const Taxonomy = mongoose.model('Taxonomy', taxonomySchema);
 
 // --- API ROUTES ---
+
+// Load complete catalog (Products, Cities, Categories)
 app.get('/api/catalog', async (req, res) => {
   try {
     const products = await Product.find().sort({ createdAt: -1 });
@@ -58,17 +58,20 @@ app.get('/api/catalog', async (req, res) => {
     res.json({
       products,
       categories: ["All", ...categories.map(c => c.name)],
-      cities: cities.map(c => c.name).length ? cities.map(c => c.name) : ["Islamabad", "Karachi", "Rawalpindi"]
+      cities: cities.map(c => c.name).length ? cities.map(c => c.name) : ["Islamabad", "Karachi"]
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load catalog' });
   }
 });
 
+// Process Order & Deduct Stock
 app.post('/api/orders', async (req, res) => {
   try {
     const newOrder = new Order(req.body);
     await newOrder.save();
+    
+    // Deduct stock exactly as requested
     for (let item of req.body.items) {
       const product = await Product.findById(item._id || item.id);
       if (product) {
@@ -88,6 +91,7 @@ app.get('/api/admin/orders', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to load orders' }); }
 });
 
+// Add Product to Database
 app.post('/api/admin/products', async (req, res) => {
   try {
     const product = new Product(req.body);
@@ -110,34 +114,40 @@ app.delete('/api/admin/products/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- CITIES & CATEGORIES (TAXONOMY) ---
+// --- CITIES & CATEGORIES MANAGEMENT ---
 app.post('/api/admin/cities', async (req, res) => {
-  await new Taxonomy({ type: 'city', name: req.body.name }).save();
-  res.json({ success: true });
+  try {
+    await new Taxonomy({ type: 'city', name: req.body.name }).save();
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.delete('/api/admin/cities/:name', async (req, res) => {
-  await Taxonomy.deleteOne({ type: 'city', name: req.params.name });
-  res.json({ success: true });
+  try {
+    await Taxonomy.deleteOne({ type: 'city', name: req.params.name });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/admin/categories', async (req, res) => {
   await new Taxonomy({ type: 'category', name: req.body.name }).save();
   res.json({ success: true });
 });
+
 app.delete('/api/admin/categories/:name', async (req, res) => {
   await Taxonomy.deleteOne({ type: 'category', name: req.params.name });
   res.json({ success: true });
 });
 
 app.post('/api/admin/login', (req, res) => {
-  if (req.body.username === 'admin' && req.body.password === (process.env.ADMIN_PASSWORD || 'Umarali667@')) {
+  if (req.body.username === 'admin' && req.body.password === 'Umarali667@') {
     res.json({ success: true });
   } else {
     res.status(401).json({ error: "Invalid credentials" });
   }
 });
 
-const PORT = process.env.PORT || 5005;
+const PORT = 5005;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🌿 API running on port ${PORT}`);
 });
