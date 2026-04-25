@@ -28,20 +28,23 @@ export default function App() {
   const [currentOrder, setCurrentOrder] = useState(null);
   const [checkoutForm, setCheckoutForm] = useState({ name: '', email: '', phone: '', address: '', paymentMethod: 'COD' });
 
+  // Admin State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [adminTab, setAdminTab] = useState('ledger'); 
   const [isFetchingOrders, setIsFetchingOrders] = useState(false);
   
+  // Modals & Forms
   const [showNewEntryModal, setShowNewEntryModal] = useState(false);
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newEntryForm, setNewEntryForm] = useState({
-    name: '', category: 'Indoor Plant', price: '', stockKHI: '', image: '🪴', desc: ''
+    name: '', category: 'Indoor Plant', price: '', stockCity: '', image: '🪴', desc: ''
   });
 
+  // --- FETCH INITIAL DATA ---
   useEffect(() => {
     fetch(`${API_BASE}/catalog`)
       .then(res => {
@@ -85,6 +88,7 @@ export default function App() {
   const getCityStock = (product, city = selectedCity) => product.stock?.[city] || 0;
 
   const handleCitySelect = (city) => { setSelectedCity(city); localStorage.setItem('pc_selected_city', city); setView('store'); setCart([]); };
+  
   const addToCart = (product) => {
     const availableStock = getCityStock(product);
     setCart(prev => {
@@ -100,15 +104,32 @@ export default function App() {
   const removeFromCart = (id) => setCart(prev => prev.filter(item => item.id !== id && item._id !== id));
   const handleCheckoutChange = (e) => setCheckoutForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
+  // --- SUBMIT ORDER & DEDUCT STOCK ---
   const submitOrder = async (e) => {
     e.preventDefault();
     const orderNum = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
     const newOrder = { orderNumber: orderNum, date: new Date().toLocaleString(), items: [...cart], totalAmount: cartTotal, customer: checkoutForm, city: selectedCity };
 
-    try { await fetch(`${API_BASE}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newOrder) });
+    // Send to Database
+    try { 
+      const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newOrder) });
+      if (res.ok) {
+        // Manually deduct local stock so UI updates without refreshing
+        setProducts(prev => prev.map(p => {
+          const cartItem = cart.find(ci => ci._id === p._id || ci.id === p.id);
+          if (cartItem) {
+            const updatedStock = { ...p.stock };
+            updatedStock[selectedCity] = Math.max(0, (updatedStock[selectedCity] || 0) - cartItem.qty);
+            return { ...p, stock: updatedStock };
+          }
+          return p;
+        }));
+      }
     } catch (err) { console.error("Order API failed", err); }
+    
     setOrders(prev => [newOrder, ...prev]);
 
+    // EMAIL JS CONFIGURATION
     const emailParams = {
       service_id: 'service_hyfp919', 
       template_id: 'template_nlst9qp',
@@ -121,6 +142,7 @@ export default function App() {
     };
     fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(emailParams) }).catch(e=>e);
 
+    // WHATSAPP CONFIGURATION
     const waText = encodeURIComponent(`🌿 *New P&C Order: ${orderNum}*\n\n*Client:* ${checkoutForm.name}\n*Phone:* ${checkoutForm.phone}\n*Address:* ${checkoutForm.address}, ${selectedCity}\n\n*Items:*\n${cart.map(item => `- ${item.qty}x ${item.name}`).join('\n')}\n\n*Total:* ${formatPrice(cartTotal)}\n*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`);
     window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); 
 
@@ -135,6 +157,7 @@ export default function App() {
     } catch (err) { if (username === 'admin' && password === 'Umarali667@') { setIsAuthenticated(true); setView('admin-dashboard'); } }
   };
 
+  // --- ADD/DELETE CITIES ---
   const submitNewCity = async (e) => {
     e.preventDefault();
     const c = newCityName.trim();
@@ -147,11 +170,13 @@ export default function App() {
     }
     setNewCityName('');
   };
+
   const deleteCity = async (cityName) => {
     setCities(prev => prev.filter(c => c !== cityName));
     try { await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' }); alert(`🗑️ Region "${cityName}" deleted.`); } catch (err) {}
   };
 
+  // --- ADD/DELETE CATEGORIES ---
   const submitNewCategory = async (e) => {
     e.preventDefault();
     const c = newCategoryName.trim();
@@ -164,22 +189,29 @@ export default function App() {
     }
     setNewCategoryName('');
   };
+
   const deleteCategory = async (catName) => {
     setCategories(prev => prev.filter(c => c !== catName));
     try { await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); alert(`🗑️ Category "${catName}" deleted.`); } catch (err) {}
   };
 
+  // --- ADD/DELETE PRODUCTS ---
   const submitNewEntry = async (e) => {
     e.preventDefault();
+    const initializedStock = {};
+    cities.forEach(c => initializedStock[c] = Number(newEntryForm.stockCity) || 0);
+
     const newProduct = {
       name: newEntryForm.name, category: newEntryForm.category, price: Number(newEntryForm.price) || 0,
-      stock: { "Karachi": Number(newEntryForm.stockKHI) || 0 }, imageUrls: [newEntryForm.image || "🪴"], shortDesc: newEntryForm.desc
+      stock: initializedStock, imageUrls: [newEntryForm.image || "🪴"], shortDesc: newEntryForm.desc
     };
-    setProducts(prev => [newProduct, ...prev]);
+    
     try {
-      await fetch(`${API_BASE}/admin/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newProduct) });
-      alert(`✅ Product "${newProduct.name}" added to ledger.`);
-    } catch (err) {}
+      const res = await fetch(`${API_BASE}/admin/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newProduct) });
+      const savedProduct = await res.json();
+      setProducts(prev => [savedProduct, ...prev]);
+      alert(`✅ Product "${savedProduct.name}" added to database.`);
+    } catch (err) { alert("Error saving product."); }
     setShowNewEntryModal(false);
   };
 
@@ -211,12 +243,14 @@ export default function App() {
     try { await fetch(`${API_BASE}/admin/products/${id}`, { method: 'DELETE' }); } catch(err) {}
   };
 
+  // Image Logo Component
   const BrandLogo = () => (
     <img src="/logo.png" alt="Plants & Ceramics" className="h-12 md:h-16 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
   );
 
   return (
     <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A]">
+      
       {view === 'city-select' && (
         <div className="min-h-screen flex flex-col items-center justify-center animate-in fade-in duration-[1500ms] p-8">
           <div className="text-center max-w-xl w-full">
@@ -257,6 +291,7 @@ export default function App() {
           </nav>
 
           <main className="pt-32 pb-24 min-h-[80vh]">
+            
             {view === 'store' && (
               <div className="animate-in fade-in duration-[1000ms]">
                 <div className="max-w-[90rem] mx-auto px-8 md:px-16 mb-24 pt-12"><h1 className="text-5xl md:text-8xl font-serif leading-[1.1] tracking-tight mb-8">Cultivated <br className="hidden md:block"/>for the modern sanctuary.</h1><div className="w-full h-[1px] bg-[#E5E0D8]"></div></div>
@@ -505,7 +540,7 @@ export default function App() {
                   </div>
                   <div className="grid grid-cols-3 gap-6">
                     <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Price (PKR)</label><input type="number" required onChange={e=>setNewEntryForm({...newEntryForm, price: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Stock (Karachi)</label><input type="number" required onChange={e=>setNewEntryForm({...newEntryForm, stockKHI: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
+                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Initial Stock Amount</label><input type="number" required onChange={e=>setNewEntryForm({...newEntryForm, stockCity: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
                     <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Image Emoji/URL</label><input type="text" defaultValue="🪴" onChange={e=>setNewEntryForm({...newEntryForm, image: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
                   </div>
                   <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Description</label><textarea required onChange={e=>setNewEntryForm({...newEntryForm, desc: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none h-24" /></div>
