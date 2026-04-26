@@ -1,3 +1,4 @@
+cat << 'EOF' > /var/www/Plants-Ceramics/plants-ceramics/frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, ArrowLeft, Lock, MoveRight, MapPin, RefreshCw, X, Download, GripVertical, CheckSquare, Edit, SlidersHorizontal, ChevronDown, Search } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -22,6 +23,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null); 
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [visibleCount, setVisibleCount] = useState(6);
   const [orders, setOrders] = useState([]);
   const [currentOrder, setCurrentOrder] = useState(null);
@@ -38,11 +40,15 @@ export default function App() {
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [entryForm, setEntryForm] = useState({ id: null, name: '', category: 'Indoor Plant', price: '', stockCity: '', image: '🪴', desc: '' });
+  
+  // UPGRADED ENTRY FORM STATE
+  const [entryForm, setEntryForm] = useState({ 
+    id: null, name: '', categories: [], price: '', stock: {}, 
+    image1: '', image2: '', image3: '', desc: '' 
+  });
   
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [draggedCityIdx, setDraggedCityIdx] = useState(null);
-  
   const [showColFilter, setShowColFilter] = useState(false);
   const [visCols, setVisCols] = useState({ image: true, category: true, desc: true, stock: true, price: true });
 
@@ -73,7 +79,8 @@ export default function App() {
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   
   const filteredProducts = products.filter(p => {
-    const matchesCategory = activeCategory === "All" || p.category === activeCategory;
+    const pCats = p.categories?.length ? p.categories : [p.category];
+    const matchesCategory = activeCategory === "All" || pCats.includes(activeCategory);
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || (p.shortDesc && p.shortDesc.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
@@ -189,14 +196,28 @@ export default function App() {
   const deleteCategory = async (catName) => { setCategories(prev => prev.filter(c => c !== catName)); try { await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); } catch (err) {} };
 
   const openEditModal = (product) => {
-    setEntryForm({ id: product._id || product.id, name: product.name, category: product.category, price: product.price, stockCity: product.stock?.[cities[0]] || 0, image: product.imageUrls[0], desc: product.shortDesc || '' });
+    setEntryForm({ 
+       id: product._id || product.id, name: product.name, 
+       categories: product.categories?.length ? product.categories : [product.category].filter(Boolean), 
+       price: product.price, stock: product.stock || {}, 
+       image1: product.imageUrls?.[0] || '', image2: product.imageUrls?.[1] || '', image3: product.imageUrls?.[2] || '', 
+       desc: product.shortDesc || '' 
+    });
     setIsEditing(true); setShowEntryModal(true);
   };
 
   const submitEntry = async (e) => {
     e.preventDefault();
-    const initStock = {}; cities.forEach(c => initStock[c] = Number(entryForm.stockCity) || 0);
-    const payload = { name: entryForm.name, category: entryForm.category, price: Number(entryForm.price) || 0, stock: initStock, imageUrls: [entryForm.image || "🪴"], shortDesc: entryForm.desc };
+    if (entryForm.categories.length === 0) return Swal.fire({icon: 'warning', title: 'Required', text: 'Select at least one category.', confirmButtonColor: '#1A1A1A'});
+    
+    const imageUrls = [entryForm.image1, entryForm.image2, entryForm.image3].filter(Boolean);
+    if(imageUrls.length === 0) imageUrls.push("🪴");
+
+    const payload = { 
+       name: entryForm.name, category: entryForm.categories[0], categories: entryForm.categories, 
+       price: Number(entryForm.price) || 0, stock: entryForm.stock, imageUrls, shortDesc: entryForm.desc 
+    };
+    
     try {
       if (isEditing) {
         const res = await fetch(`${API_BASE}/admin/products/${entryForm.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -211,13 +232,13 @@ export default function App() {
     setShowEntryModal(false);
   };
 
-  const handleQuickUpdate = async (id, field, value) => {
+  const handleQuickUpdate = async (id, field, value, city=null) => {
     const numVal = Number(value); if (isNaN(numVal)) return;
     setProducts(prev => prev.map(p => {
       if (p._id === id || p.id === id) {
         let updated = { ...p };
         if (field === 'price') updated.price = numVal;
-        if (field === 'stock') { updated.stock = { ...updated.stock }; updated.stock[cities[0]] = numVal; }
+        if (field === 'stock') { updated.stock = { ...updated.stock }; updated.stock[city] = Math.max(0, numVal); }
         fetch(`${API_BASE}/admin/products/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) }).catch(e=>e);
         return updated;
       }
@@ -253,7 +274,7 @@ export default function App() {
         const text = event.target.result; const rows = text.split('\n').slice(1);
         const parsedProducts = rows.map(row => {
           const cols = row.split(','); if(cols.length < 5) return null;
-          return { name: cols[0], imageUrls: [cols[1] || '🪴'], category: cols[2], price: Number(cols[3]) || 0, shortDesc: cols[4], stock: { "Karachi": Number(cols[5]) || 0, "Islamabad": Number(cols[6]) || 0 } };
+          return { name: cols[0], imageUrls: [cols[1] || '🪴'], categories: [cols[2]], category: cols[2], price: Number(cols[3]) || 0, shortDesc: cols[4], stock: { "Karachi": Number(cols[5]) || 0, "Islamabad": Number(cols[6]) || 0 } };
         }).filter(Boolean);
         setProducts(prev => [...parsedProducts, ...prev]);
         try { await fetch(`${API_BASE}/admin/products/bulk`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products: parsedProducts }) }); Swal.fire({ icon: 'success', title: 'Upload Successful!', confirmButtonColor: '#1A1A1A' }); } catch(err) {}
@@ -311,8 +332,6 @@ export default function App() {
               <div className="animate-in fade-in duration-[1000ms]">
                 <div className="max-w-[90rem] mx-auto px-8 md:px-16 mb-16 pt-12">
                   <h1 className="text-5xl md:text-8xl font-serif leading-[1.1] tracking-tight mb-12">Cultivated <br className="hidden md:block"/>for the modern sanctuary.</h1>
-                  
-                  {/* FEATURE: STOREFRONT SEARCH BAR */}
                   <div className="relative max-w-md w-full mb-8">
                     <input type="text" placeholder="Search botanicals & ceramics..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 pl-8 text-sm focus:outline-none focus:border-[#1A1A1A] font-serif" />
                     <Search size={16} className="absolute left-0 top-0.5 text-[#1A1A1A]/40" />
@@ -337,7 +356,7 @@ export default function App() {
                         const inStock = getCityStock(product) > 0;
                         const displayImg = product.imageUrls?.[0] || product.image || "🪴";
                         return (
-                        <div key={product.id || product._id} onClick={() => { setSelectedProduct(product); setView('product-detail'); }} className={`group flex flex-col cursor-pointer animate-in fade-in duration-700 ${!inStock && 'opacity-60 grayscale-[50%]'}`}>
+                        <div key={product.id || product._id} onClick={() => { setSelectedProduct(product); setActiveImageIdx(0); setView('product-detail'); }} className={`group flex flex-col cursor-pointer animate-in fade-in duration-700 ${!inStock && 'opacity-60 grayscale-[50%]'}`}>
                           <div className="w-full aspect-[4/5] bg-[#EBE6E0] mb-6 relative overflow-hidden flex items-center justify-center text-8xl transition-colors duration-700">
                             {displayImg.includes('http') ? <img src={displayImg} alt={product.name} className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-[1500ms]" onError={(e) => e.target.src='https://via.placeholder.com/400x500?text=P%26C'} /> : <span className="transform group-hover:scale-110 transition-transform duration-[1500ms]">{displayImg}</span>}
                             {inStock && (
@@ -348,7 +367,7 @@ export default function App() {
                           </div>
                           <div className="flex flex-col px-1">
                             <div className="flex justify-between items-baseline mb-1"><h3 className="font-serif text-2xl text-[#1A1A1A] group-hover:text-[#2C3D30] transition-colors">{product.name}</h3><span className="text-xs tracking-widest text-[#1A1A1A]/80">{formatPrice(product.price)}</span></div>
-                            <p className="text-[10px] uppercase tracking-[0.15em] text-[#1A1A1A]/40">{product.category.replace("_", " ")}</p>
+                            <p className="text-[10px] uppercase tracking-[0.15em] text-[#1A1A1A]/40">{(product.categories?.length ? product.categories : [product.category]).join(', ')}</p>
                           </div>
                         </div>
                       )})}
@@ -362,11 +381,25 @@ export default function App() {
               <div className="max-w-[90rem] mx-auto px-8 md:px-16 animate-in fade-in">
                 <button onClick={() => setView('store')} className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60 hover:text-[#1A1A1A] mb-12 border-b border-transparent hover:border-[#1A1A1A] pb-1 w-fit"><ArrowLeft size={12} strokeWidth={1} /> Back</button>
                 <div className="flex flex-col md:flex-row gap-16 lg:gap-32">
-                  <div className={`w-full md:w-1/2 aspect-[4/5] bg-[#EBE6E0] flex items-center justify-center text-9xl overflow-hidden ${getCityStock(selectedProduct) === 0 && 'grayscale-[50%] opacity-80'}`}>
-                    {(selectedProduct.imageUrls?.[0] || selectedProduct.image || "").includes('http') ? <img src={selectedProduct.imageUrls[0]} alt={selectedProduct.name} className="w-full h-full object-cover" /> : (selectedProduct.imageUrls?.[0] || selectedProduct.image || "🪴")}
+                  
+                  {/* MULTI-IMAGE GALLERY */}
+                  <div className="w-full md:w-1/2 flex flex-col gap-4">
+                     <div className={`w-full aspect-[4/5] bg-[#EBE6E0] flex items-center justify-center text-9xl overflow-hidden ${getCityStock(selectedProduct) === 0 && 'grayscale-[50%] opacity-80'}`}>
+                       {(selectedProduct.imageUrls?.[activeImageIdx] || selectedProduct.imageUrls?.[0] || selectedProduct.image || "").includes('http') ? <img src={selectedProduct.imageUrls[activeImageIdx]} alt={selectedProduct.name} className="w-full h-full object-cover" /> : (selectedProduct.imageUrls?.[0] || selectedProduct.image || "🪴")}
+                     </div>
+                     {selectedProduct.imageUrls?.length > 1 && (
+                        <div className="flex gap-4 overflow-x-auto pb-2">
+                           {selectedProduct.imageUrls.map((img, i) => (
+                              <div key={i} onClick={() => setActiveImageIdx(i)} className={`w-20 h-20 shrink-0 cursor-pointer overflow-hidden border-2 ${activeImageIdx === i ? 'border-[#1A1A1A]' : 'border-transparent opacity-50 hover:opacity-100'}`}>
+                                 {img.includes('http') ? <img src={img} className="w-full h-full object-cover" alt="thumb" /> : <div className="w-full h-full bg-[#EBE6E0] flex items-center justify-center text-2xl">{img}</div>}
+                              </div>
+                           ))}
+                        </div>
+                     )}
                   </div>
+
                   <div className="w-full md:w-1/2 flex flex-col justify-center">
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 mb-6">{selectedProduct.category.replace("_", " ")}</p>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 mb-6">{(selectedProduct.categories?.length ? selectedProduct.categories : [selectedProduct.category]).join(', ')}</p>
                     <h1 className="text-5xl lg:text-7xl font-serif leading-[1.1] tracking-tight mb-8">{selectedProduct.name}</h1>
                     <p className="text-2xl font-light tracking-widest text-[#1A1A1A] mb-12 border-b border-[#E5E0D8] pb-12">{formatPrice(selectedProduct.price)}</p>
                     <div className="space-y-6 text-[#1A1A1A]/70 font-light leading-relaxed mb-16 text-sm"><p>{selectedProduct.longDesc || selectedProduct.shortDesc}</p></div>
@@ -435,7 +468,6 @@ export default function App() {
                       <textarea name="instructions" placeholder="Special Instructions for Delivery..." onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A] mt-4" rows="2"></textarea>
                       
                       <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#E5E0D8] pb-4 mt-12">Payment</h3>
-                      {/* FEATURE: LUXURY DROPDOWN FIX */}
                       <div className="relative w-full">
                          <select name="paymentMethod" onChange={handleCheckoutChange} className="appearance-none w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A] font-serif rounded-none cursor-pointer">
                            <option value="COD">Cash on Delivery</option>
@@ -505,8 +537,6 @@ export default function App() {
                           <button onClick={handleBulkDelete} className="text-[10px] uppercase tracking-[0.2em] bg-red-900 text-white px-6 py-3 hover:bg-red-700 transition-colors hidden md:block">Delete ({selectedProductIds.length})</button>
                         )}
                         <button onClick={() => setShowColFilter(!showColFilter)} className="text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] text-[#1A1A1A] px-4 py-3 hover:bg-[#1A1A1A] hover:text-[#F7F5F0] border border-[#1A1A1A]/10 flex items-center gap-2"><SlidersHorizontal size={14}/></button>
-                        
-                        {/* FEATURE: COLUMN TOGGLE FILTER */}
                         {showColFilter && (
                            <div className="absolute top-12 right-0 bg-white border border-[#E5E0D8] p-4 shadow-xl z-50 w-48 space-y-3">
                               <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 border-b border-[#E5E0D8] pb-2">Toggle Fields</p>
@@ -517,8 +547,7 @@ export default function App() {
                               ))}
                            </div>
                         )}
-
-                        <button onClick={() => { setIsEditing(false); setEntryForm({ id: null, name: '', category: categories[1] || 'Indoor Plant', price: '', stockCity: '', image: '🪴', desc: '' }); setShowEntryModal(true); }} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-4 md:px-6 py-3 hover:bg-[#2C3D30]">Add <Plus size={12} className="inline"/></button>
+                        <button onClick={() => { setIsEditing(false); setEntryForm({ id: null, name: '', categories: [], price: '', stock: {}, image1: '', image2: '', image3: '', desc: '' }); setShowEntryModal(true); }} className="text-[10px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F5F0] px-4 md:px-6 py-3 hover:bg-[#2C3D30]">Add <Plus size={12} className="inline"/></button>
                         <button onClick={() => setShowCSVModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] text-[#1A1A1A] px-4 md:px-6 py-3 hover:bg-[#1A1A1A] hover:text-[#F7F5F0] border border-[#1A1A1A]/10 hidden md:block">Bulk CSV</button>
                       </div>
                     )}
@@ -563,7 +592,6 @@ export default function App() {
 
                 {adminTab === 'orders' && (
                   <div className="space-y-8 animate-in fade-in">
-                    {/* FEATURE: LIVE SCORECARD */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                        <div className="bg-[#1A1A1A] text-white p-6 border border-[#1A1A1A]/20 shadow-sm">
                           <p className="text-[10px] uppercase tracking-[0.2em] text-white/50 mb-2">Total Orders</p>
@@ -595,8 +623,6 @@ export default function App() {
                           <div className="flex-grow">
                              <div className="flex justify-between items-start mb-6">
                                <h3 className="text-2xl font-serif">{order.orderNumber || order.id} <span className="text-sm tracking-widest text-[#1A1A1A]/50 ml-4">{formatPrice(order.totalAmount || order.total)}</span></h3>
-                               
-                               {/* FEATURE: LUXURY ORDER STATUS DROPDOWN */}
                                <div className="relative w-40">
                                   <select value={order.status || 'Pending'} onChange={(e) => updateOrderStatus(order._id || order.id, e.target.value)} className={`appearance-none w-full bg-transparent border-b pb-2 text-xs uppercase tracking-[0.1em] font-bold focus:outline-none cursor-pointer ${order.status === 'Completed' ? 'text-green-700 border-green-700/20' : order.status === 'Cancelled' ? 'text-red-700 border-red-700/20' : 'text-[#1A1A1A] border-[#1A1A1A]/20'}`}>
                                     <option value="Pending">Pending</option>
@@ -636,7 +662,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* FEATURE: FULL INVENTORY TABLE & INLINE QUICK EDITS */}
                 {adminTab === 'ledger' && (
                   <div className="overflow-x-auto w-full">
                      <table className="w-full text-left text-sm animate-in fade-in min-w-[800px]">
@@ -647,8 +672,8 @@ export default function App() {
                            <th className="pb-6">Designation</th>
                            {visCols.category && <th className="pb-6">Category</th>}
                            {visCols.desc && <th className="pb-6 w-48">Short Desc</th>}
-                           {visCols.stock && <th className="pb-6">Stock ({cities[0]})</th>}
-                           {visCols.price && <th className="pb-6">Price (PKR)</th>}
+                           {visCols.stock && cities.map(city => <th key={city} className="pb-6 w-16">{city} Stock</th>)}
+                           {visCols.price && <th className="pb-6 w-24">Price (PKR)</th>}
                            <th className="pb-6 text-right">Actions</th>
                          </tr>
                        </thead>
@@ -668,16 +693,18 @@ export default function App() {
                                 </td>
                              )}
                              <td className="py-4 font-serif text-lg px-2">{p.name}</td>
-                             {visCols.category && <td className="py-4 text-[10px] uppercase tracking-widest text-[#1A1A1A]/50">{p.category.replace("_", " ")}</td>}
+                             {visCols.category && <td className="py-4 text-[10px] uppercase tracking-widest text-[#1A1A1A]/50">{(p.categories?.length ? p.categories : [p.category]).join(', ')}</td>}
                              {visCols.desc && <td className="py-4 text-xs text-[#1A1A1A]/70 truncate max-w-[200px]">{p.shortDesc}</td>}
-                             {visCols.stock && (
-                                <td className="py-4">
-                                   <input type="number" defaultValue={p.stock?.[cities[0]] || 0} onBlur={(e) => handleQuickUpdate(p.id || p._id, 'stock', e.target.value)} className="w-16 bg-transparent border-b border-transparent hover:border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none py-1" />
-                                </td>
-                             )}
+                             
+                             {visCols.stock && cities.map(city => (
+                               <td key={city} className="py-4">
+                                  <input type="number" defaultValue={p.stock?.[city] || 0} onBlur={(e) => handleQuickUpdate(p.id || p._id, 'stock', e.target.value, city)} className="w-12 bg-transparent border-b border-transparent hover:border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none py-1" />
+                               </td>
+                             ))}
+
                              {visCols.price && (
                                 <td className="py-4 tracking-widest">
-                                   <input type="number" defaultValue={p.price} onBlur={(e) => handleQuickUpdate(p.id || p._id, 'price', e.target.value)} className="w-24 bg-transparent border-b border-transparent hover:border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none py-1" />
+                                   <input type="number" defaultValue={p.price} onBlur={(e) => handleQuickUpdate(p.id || p._id, 'price', e.target.value)} className="w-20 bg-transparent border-b border-transparent hover:border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none py-1" />
                                 </td>
                              )}
                              <td className="py-4 text-right px-2 flex justify-end gap-6 items-center">
@@ -701,7 +728,6 @@ export default function App() {
                   <BrandLogo />
                   <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50 mt-1">Plants & Ceramics</span>
                 </div>
-                {/* FEATURE: FOOTER CREDIT LINK */}
                 <div className="text-center md:text-right">
                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 mb-1">Curated in Karachi, Pakistan.</p>
                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40">Developed & Maintained by <a href="https://doubbletech.com" target="_blank" rel="noreferrer" className="text-[#1A1A1A] font-bold hover:underline">DoubbleTech.com</a></p>
@@ -710,48 +736,64 @@ export default function App() {
             </footer>
           )}
 
+          {/* MULTI-CATEGORY & LOCATION MODAL */}
           {showEntryModal && (
             <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
-              <div className="bg-[#F7F5F0] p-8 md:p-12 max-w-2xl w-full border border-[#E5E0D8] shadow-2xl relative my-auto">
+              <div className="bg-[#F7F5F0] p-8 md:p-12 max-w-3xl w-full border border-[#E5E0D8] shadow-2xl relative my-auto">
                 <button onClick={() => setShowEntryModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
                 <h2 className="text-4xl font-serif mb-8 border-b border-[#1A1A1A]/10 pb-4">{isEditing ? 'Edit Product.' : 'New Product.'}</h2>
-                <form onSubmit={submitEntry} className="space-y-6">
+                <form onSubmit={submitEntry} className="space-y-8">
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Name</label><input type="text" required value={entryForm.name} onChange={e=>setEntryForm({...entryForm, name: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" /></div>
                     <div>
-                      <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Category</label>
-                      <select value={entryForm.category} onChange={e=>setEntryForm({...entryForm, category: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none">
-                        {categories.filter(c => c !== "All").map(c => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
-                      </select>
+                       <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Name</label>
+                       <input type="text" required value={entryForm.name} onChange={e=>setEntryForm({...entryForm, name: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                    </div>
+                    <div>
+                       <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Price (PKR)</label>
+                       <input type="number" required value={entryForm.price} onChange={e=>setEntryForm({...entryForm, price: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Price (PKR)</label><input type="number" required value={entryForm.price} onChange={e=>setEntryForm({...entryForm, price: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Stock ({cities[0]})</label><input type="number" required value={entryForm.stockCity} onChange={e=>setEntryForm({...entryForm, stockCity: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
-                    <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Image Link / Emoji</label><input type="text" value={entryForm.image} onChange={e=>setEntryForm({...entryForm, image: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none" /></div>
+
+                  <div>
+                     <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-4 block border-b border-[#1A1A1A]/10 pb-2">Categories (Select multiple)</label>
+                     <div className="flex flex-wrap gap-4">
+                       {categories.filter(c => c !== "All").map(c => (
+                         <label key={c} className="flex items-center gap-2 text-sm cursor-pointer">
+                           <input type="checkbox" checked={entryForm.categories.includes(c)} onChange={(e) => {
+                             const newCats = e.target.checked ? [...entryForm.categories, c] : entryForm.categories.filter(cat => cat !== c);
+                             setEntryForm({...entryForm, categories: newCats});
+                           }} className="accent-[#1A1A1A] w-4 h-4" /> {c}
+                         </label>
+                       ))}
+                     </div>
                   </div>
+
+                  <div>
+                     <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-4 block border-b border-[#1A1A1A]/10 pb-2">Location Availability & Stock</label>
+                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                       {cities.map(city => (
+                         <div key={city}>
+                           <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/70 mb-2 block">{city}</label>
+                           <input type="number" min="0" value={entryForm.stock[city] || 0} onChange={e => setEntryForm({...entryForm, stock: {...entryForm.stock, [city]: Number(e.target.value)}})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                         </div>
+                       ))}
+                     </div>
+                     <p className="text-[10px] text-[#1A1A1A]/40 mt-2 italic">* Set stock to 0 to hide this product from a specific city.</p>
+                  </div>
+
+                  <div>
+                     <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-4 block border-b border-[#1A1A1A]/10 pb-2">Image Gallery (Links or Emojis)</label>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <input type="text" placeholder="Image URL 1" value={entryForm.image1} onChange={e=>setEntryForm({...entryForm, image1: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                        <input type="text" placeholder="Image URL 2 (Optional)" value={entryForm.image2} onChange={e=>setEntryForm({...entryForm, image2: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                        <input type="text" placeholder="Image URL 3 (Optional)" value={entryForm.image3} onChange={e=>setEntryForm({...entryForm, image3: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                     </div>
+                  </div>
+
                   <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Short Description</label><textarea required value={entryForm.desc} onChange={e=>setEntryForm({...entryForm, desc: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none h-24" /></div>
                   <button type="submit" className="w-full bg-[#1A1A1A] text-white py-4 text-[10px] uppercase tracking-[0.3em] hover:bg-[#2C3D30] transition-colors mt-8">{isEditing ? 'Save Changes' : 'Add to Ledger'}</button>
                 </form>
-              </div>
-            </div>
-          )}
-
-          {showCSVModal && (
-            <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-              <div className="bg-[#F7F5F0] p-12 max-w-xl w-full border border-[#E5E0D8] shadow-2xl relative text-center">
-                 <button onClick={() => setShowCSVModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
-                 <h2 className="text-4xl font-serif mb-4">Bulk Import.</h2>
-                 <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-8">Upload a CSV file to inject multiple products instantly.</p>
-                 
-                 <button onClick={downloadSampleCSV} className="flex items-center justify-center gap-2 mx-auto mb-8 text-sm border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] transition-colors">
-                    <Download size={14} /> Download Sample Format
-                 </button>
-
-                 <div className="border-2 border-dashed border-[#1A1A1A]/20 p-12 hover:border-[#1A1A1A] transition-colors relative cursor-pointer bg-white">
-                    <input type="file" accept=".csv" onChange={handleCSVUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                    <span className="text-sm font-medium">Click to Browse or Drag CSV Here</span>
-                 </div>
               </div>
             </div>
           )}
@@ -760,3 +802,4 @@ export default function App() {
     </div>
   );
 }
+EOF
