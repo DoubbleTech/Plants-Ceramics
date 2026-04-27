@@ -1,6 +1,5 @@
-cat << 'EOF' > /var/www/Plants-Ceramics/plants-ceramics/frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { Plus, ArrowLeft, Lock, MoveRight, MapPin, RefreshCw, X, Download, GripVertical, CheckSquare, Edit, SlidersHorizontal, ChevronDown, Search } from 'lucide-react';
+import { Plus, ArrowLeft, Lock, MoveRight, MapPin, RefreshCw, X, Download, GripVertical, CheckSquare, Edit, SlidersHorizontal, ChevronDown, Search, Truck } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const API_BASE = `/api`;
@@ -28,6 +27,10 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [currentOrder, setCurrentOrder] = useState(null);
   
+  // TRACKING STATE
+  const [trackInput, setTrackInput] = useState("");
+  const [trackResult, setTrackResult] = useState(null);
+
   const [checkoutForm, setCheckoutForm] = useState({ name: '', email: '', phone: '', address: '', mapLink: '', addressType: 'Home', secretCode: '', instructions: '', paymentMethod: 'COD', receipt: null });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
@@ -41,11 +44,7 @@ export default function App() {
   const [newCityName, setNewCityName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   
-  // UPGRADED ENTRY FORM STATE
-  const [entryForm, setEntryForm] = useState({ 
-    id: null, name: '', categories: [], price: '', stock: {}, 
-    image1: '', image2: '', image3: '', desc: '' 
-  });
+  const [entryForm, setEntryForm] = useState({ id: null, name: '', categories: [], price: '', stock: {}, image1: '', image2: '', image3: '', desc: '' });
   
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [draggedCityIdx, setDraggedCityIdx] = useState(null);
@@ -138,9 +137,24 @@ export default function App() {
     };
     fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(emailParams) }).catch(e=>e);
     
-    const waText = encodeURIComponent(`🌿 *New P&C Order: ${orderNum}*\n\n*Client:* ${checkoutForm.name}\n*Phone:* ${checkoutForm.phone}\n*Type:* ${checkoutForm.addressType}\n*Address:* ${checkoutForm.address}, ${selectedCity}\n*Map Link:* ${checkoutForm.mapLink || 'N/A'}\n*Secret Code:* ${checkoutForm.secretCode || 'N/A'}\n*Instructions:* ${checkoutForm.instructions || 'None'}\n\n*Items:*\n${cart.map(item => `- ${item.qty}x ${item.name}`).join('\n')}\n\n*Total:* ${formatPrice(cartTotal)}\n*Payment:* ${checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}`);
-    window.open(`https://wa.me/923122806668?text=${waText}`, '_blank'); 
     setCurrentOrder(newOrder); setCart([]); setView('order-success');
+  };
+
+  // --- ORDER TRACKING LOGIC ---
+  const handleTrackOrder = async () => {
+    if (!trackInput.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/track-order/${trackInput}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTrackResult(data);
+      } else {
+         Swal.fire({ icon: 'error', title: 'Not Found', text: 'Order number not recognized.', confirmButtonColor: '#1A1A1A' });
+         setTrackResult(null);
+      }
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Tracking system offline.', confirmButtonColor: '#1A1A1A' });
+    }
   };
 
   const handleLogin = async (e) => {
@@ -314,6 +328,8 @@ export default function App() {
               <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex justify-between items-center">
                 <div className="flex gap-8 items-center text-[10px] uppercase tracking-[0.2em] font-medium text-[#1A1A1A]/60">
                   <button onClick={() => setView('store')} className="hover:text-[#1A1A1A]">Collection</button>
+                  {/* FEATURE: TRACK ORDER NAVBAR LINK */}
+                  {selectedCity && <button onClick={() => setView('track-order')} className="hover:text-[#1A1A1A] flex items-center gap-1"><Truck size={12}/> Track</button>}
                 </div>
                 <div className="absolute left-1/2 -translate-x-1/2 cursor-pointer group" onClick={() => setView('store')}>
                   <BrandLogo />
@@ -328,6 +344,42 @@ export default function App() {
 
           <main className={isClientView ? "pt-32 pb-24 min-h-[80vh]" : "min-h-screen"}>
             
+            {/* FEATURE: ORDER TRACKING PAGE */}
+            {view === 'track-order' && (
+              <div className="min-h-[60vh] flex flex-col items-center justify-center px-8 animate-in fade-in">
+                 <div className="text-center max-w-xl w-full">
+                    <h2 className="text-5xl font-serif mb-6">Track Your Order.</h2>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-12">Enter your ORD-XXXXXX reference number</p>
+                    
+                    <div className="flex gap-4 w-full mb-12">
+                       <input type="text" placeholder="e.g., ORD-123456" value={trackInput} onChange={e=>setTrackInput(e.target.value)} className="flex-1 bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none focus:border-[#1A1A1A] font-mono tracking-wider" />
+                       <button onClick={handleTrackOrder} className="bg-[#1A1A1A] text-white px-8 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30] transition-colors">Search</button>
+                    </div>
+
+                    {trackResult && (
+                      <div className="bg-white p-10 border border-[#E5E0D8] shadow-sm text-left animate-in fade-in">
+                         <div className="flex justify-between items-baseline border-b border-[#E5E0D8] pb-6 mb-6">
+                            <h3 className="text-2xl font-serif text-[#1A1A1A]">Order Status</h3>
+                            <span className={`text-[10px] uppercase tracking-widest font-bold px-3 py-1 ${trackResult.status === 'Completed' ? 'bg-green-100 text-green-800' : trackResult.status === 'Cancelled' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{trackResult.status}</span>
+                         </div>
+                         <div className="space-y-4 text-sm text-[#1A1A1A]/80">
+                            <p><strong>Customer:</strong> {trackResult.customerName}</p>
+                            <p><strong>Order Number:</strong> <span className="font-mono">{trackResult.orderNumber}</span></p>
+                            <div className="bg-[#F7F5F0] p-4 mt-6">
+                               <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-1">Estimated Delivery Time</p>
+                               <p className="text-lg font-serif">
+                                  {trackResult.status === 'Pending' || trackResult.status === 'In Process' ? '3 to 6 Working Days' :
+                                   trackResult.status === 'Dispatched' ? '1 to 2 Working Days' :
+                                   trackResult.status === 'Completed' ? 'Delivered' : 'N/A'}
+                               </p>
+                            </div>
+                         </div>
+                      </div>
+                    )}
+                 </div>
+              </div>
+            )}
+
             {view === 'store' && (
               <div className="animate-in fade-in duration-[1000ms]">
                 <div className="max-w-[90rem] mx-auto px-8 md:px-16 mb-16 pt-12">
@@ -382,7 +434,6 @@ export default function App() {
                 <button onClick={() => setView('store')} className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60 hover:text-[#1A1A1A] mb-12 border-b border-transparent hover:border-[#1A1A1A] pb-1 w-fit"><ArrowLeft size={12} strokeWidth={1} /> Back</button>
                 <div className="flex flex-col md:flex-row gap-16 lg:gap-32">
                   
-                  {/* MULTI-IMAGE GALLERY */}
                   <div className="w-full md:w-1/2 flex flex-col gap-4">
                      <div className={`w-full aspect-[4/5] bg-[#EBE6E0] flex items-center justify-center text-9xl overflow-hidden ${getCityStock(selectedProduct) === 0 && 'grayscale-[50%] opacity-80'}`}>
                        {(selectedProduct.imageUrls?.[activeImageIdx] || selectedProduct.imageUrls?.[0] || selectedProduct.image || "").includes('http') ? <img src={selectedProduct.imageUrls[activeImageIdx]} alt={selectedProduct.name} className="w-full h-full object-cover" /> : (selectedProduct.imageUrls?.[0] || selectedProduct.image || "🪴")}
@@ -501,6 +552,7 @@ export default function App() {
                 <h2 className="text-6xl font-serif mb-8 text-[#2C3D30]">Acquired.</h2>
                 <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-6">Reference: <span className="bg-[#1A1A1A] text-white px-2 py-1 font-bold">{currentOrder.orderNumber || currentOrder.id}</span></p>
                 <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">Your selections have been reserved for dispatch in {selectedCity}.<br/><br/>Please prepare {formatPrice(cartTotal)}.</p>
+                <button onClick={() => setView('track-order')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] mb-4 block mx-auto">Track this Order</button>
                 <button onClick={() => setView('store')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30]">Return to Collection</button>
               </div>
             )}
@@ -736,10 +788,9 @@ export default function App() {
             </footer>
           )}
 
-          {/* MULTI-CATEGORY & LOCATION MODAL */}
           {showEntryModal && (
             <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in overflow-y-auto py-12">
-              <div className="bg-[#F7F5F0] p-8 md:p-12 max-w-3xl w-full border border-[#E5E0D8] shadow-2xl relative my-auto">
+              <div className="bg-[#F7F5F0] p-8 md:p-12 max-w-3xl w-full border border-[#E5E0D8] shadow-2xl relative my-auto mt-24 md:mt-auto">
                 <button onClick={() => setShowEntryModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
                 <h2 className="text-4xl font-serif mb-8 border-b border-[#1A1A1A]/10 pb-4">{isEditing ? 'Edit Product.' : 'New Product.'}</h2>
                 <form onSubmit={submitEntry} className="space-y-8">
@@ -794,6 +845,25 @@ export default function App() {
                   <div><label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-2 block">Short Description</label><textarea required value={entryForm.desc} onChange={e=>setEntryForm({...entryForm, desc: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none h-24" /></div>
                   <button type="submit" className="w-full bg-[#1A1A1A] text-white py-4 text-[10px] uppercase tracking-[0.3em] hover:bg-[#2C3D30] transition-colors mt-8">{isEditing ? 'Save Changes' : 'Add to Ledger'}</button>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {showCSVModal && (
+            <div className="fixed inset-0 z-50 bg-[#1A1A1A]/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+              <div className="bg-[#F7F5F0] p-12 max-w-xl w-full border border-[#E5E0D8] shadow-2xl relative text-center">
+                 <button onClick={() => setShowCSVModal(false)} className="absolute top-6 right-6 text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><X size={24} strokeWidth={1} /></button>
+                 <h2 className="text-4xl font-serif mb-4">Bulk Import.</h2>
+                 <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-8">Upload a CSV file to inject multiple products instantly.</p>
+                 
+                 <button onClick={downloadSampleCSV} className="flex items-center justify-center gap-2 mx-auto mb-8 text-sm border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] transition-colors">
+                    <Download size={14} /> Download Sample Format
+                 </button>
+
+                 <div className="border-2 border-dashed border-[#1A1A1A]/20 p-12 hover:border-[#1A1A1A] transition-colors relative cursor-pointer bg-white">
+                    <input type="file" accept=".csv" onChange={handleCSVUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    <span className="text-sm font-medium">Click to Browse or Drag CSV Here</span>
+                 </div>
               </div>
             </div>
           )}
