@@ -1,4 +1,7 @@
-cat << 'EOF' > /var/www/Plants-Ceramics/plants-ceramics/backend/server.js
+/**
+ * Plants & Ceramics - Full Stack API
+ */
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -12,13 +15,9 @@ mongoose.connect('mongodb://127.0.0.1:27017/plants_ceramics')
   .catch(err => console.error('DB Error:', err));
 
 const productSchema = new mongoose.Schema({
-  name: { type: String, required: true }, 
-  category: { type: String }, 
-  categories: { type: [String], default: [] }, // NEW: Multi-category support
-  price: { type: Number, required: true }, 
-  stock: { type: Map, of: Number, default: {} }, // Handles multiple cities
-  isBykeaEligible: { type: Boolean, default: true }, 
-  imageUrls: [String], // Handles up to 3 images
+  name: { type: String, required: true }, category: { type: String }, categories: { type: [String], default: [] }, 
+  price: { type: Number, required: true }, stock: { type: Map, of: Number, default: {} }, 
+  isBykeaEligible: { type: Boolean, default: true }, imageUrls: [String], 
   shortDesc: String, longDesc: String, createdAt: { type: Date, default: Date.now }
 });
 const Product = mongoose.model('Product', productSchema);
@@ -41,6 +40,24 @@ app.get('/api/catalog', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Failed to load catalog' }); }
 });
 
+// --- NEW PUBLIC ORDER TRACKING ROUTE ---
+app.get('/api/track-order/:orderNum', async (req, res) => {
+  try {
+    const order = await Order.findOne({ orderNumber: req.params.orderNum.trim() });
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    
+    // Only send non-sensitive tracking info
+    res.json({
+      orderNumber: order.orderNumber,
+      customerName: order.customer.name,
+      status: order.status,
+      date: order.createdAt
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.post('/api/orders', async (req, res) => {
   try {
     const newOrder = new Order(req.body); await newOrder.save();
@@ -48,6 +65,18 @@ app.post('/api/orders', async (req, res) => {
       const product = await Product.findById(item._id || item.id);
       if (product) { product.stock.set(req.body.city, Math.max(0, (product.stock.get(req.body.city) || 0) - item.qty)); await product.save(); }
     }
+
+    // --- AUTOMATED WHATSAPP NOTIFICATION ---
+    // Note: You must get a free API key from https://www.callmebot.com/blog/free-api-whatsapp-messages/
+    const waPhone = "+923122806668"; 
+    const waApiKey = "YOUR_CALLMEBOT_API_KEY"; // <-- Get this free key and paste it here later
+    const waMessage = `🌿 *New P&C Order:* ${newOrder.orderNumber}%0A*Client:* ${newOrder.customer.name}%0A*Total:* PKR ${newOrder.totalAmount}%0A*City:* ${newOrder.city}`;
+    
+    if (waApiKey !== "YOUR_CALLMEBOT_API_KEY") {
+      fetch(`https://api.callmebot.com/whatsapp.php?phone=${waPhone}&text=${waMessage}&apikey=${waApiKey}`)
+        .catch(e => console.error("WhatsApp notification failed:", e));
+    }
+
     res.status(201).json({ success: true });
   } catch (error) { res.status(400).json({ error: error.message }); }
 });
@@ -100,4 +129,3 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 app.listen(5005, '127.0.0.1', () => console.log(`🌿 API running`));
-EOF
