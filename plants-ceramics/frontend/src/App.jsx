@@ -1,5 +1,8 @@
+cd /var/www/Plants-Ceramics/plants-ceramics/frontend
+
+cat << 'EOF' > src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { Plus, ArrowLeft, Lock, MoveRight, MapPin, RefreshCw, X, Download, GripVertical, CheckSquare, Edit, SlidersHorizontal, ChevronDown, Search, Truck } from 'lucide-react';
+import { Plus, ArrowLeft, Lock, MoveRight, MapPin, RefreshCw, X, Download, GripVertical, CheckSquare, Edit, SlidersHorizontal, ChevronDown, Search, Truck, Home, Ticket, UploadCloud } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 const API_BASE = `/api`;
@@ -27,11 +30,13 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [currentOrder, setCurrentOrder] = useState(null);
   
-  // TRACKING STATE
   const [trackInput, setTrackInput] = useState("");
   const [trackResult, setTrackResult] = useState(null);
 
   const [checkoutForm, setCheckoutForm] = useState({ name: '', email: '', phone: '', address: '', mapLink: '', addressType: 'Home', secretCode: '', instructions: '', paymentMethod: 'COD', receipt: null });
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -44,12 +49,41 @@ export default function App() {
   const [newCityName, setNewCityName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   
+  const [adminCoupons, setAdminCoupons] = useState([]);
+  const [newCoupon, setNewCoupon] = useState({ code: '', type: 'percent', value: '', scope: 'all', target: '' });
+
   const [entryForm, setEntryForm] = useState({ id: null, name: '', categories: [], price: '', stock: {}, image1: '', image2: '', image3: '', desc: '' });
-  
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [draggedCityIdx, setDraggedCityIdx] = useState(null);
+  const [draggedCatIdx, setDraggedCatIdx] = useState(null);
   const [showColFilter, setShowColFilter] = useState(false);
   const [visCols, setVisCols] = useState({ image: true, category: true, desc: true, stock: true, price: true });
+
+  const navigateTo = (newView) => {
+    let basePath = window.location.pathname;
+    if (basePath.includes('admin') && newView !== 'admin-login' && newView !== 'admin-dashboard') {
+      basePath = '/';
+    }
+    window.history.pushState({ view: newView }, '', basePath + `?page=${newView}`);
+    setView(newView);
+  };
+
+  useEffect(() => {
+    const handlePopState = (event) => {
+      if (event.state && event.state.view) setView(event.state.view);
+      else setView(getInitialView());
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.history.replaceState({ view: view }, '', window.location.pathname + `?page=${view}`);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const BrandLogo = ({ iconSize = "text-4xl", textSize = "text-3xl" }) => (
+    <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigateTo('store')}>
+       <span className={`${iconSize} transition-transform duration-500 group-hover:-rotate-12 inline-block`}>🌿</span>
+       <span className={`font-serif font-bold tracking-widest text-[#1A1A1A] ${textSize}`}>P&C.</span>
+    </div>
+  );
 
   useEffect(() => {
     fetch(`${API_BASE}/catalog`).then(res => { if (!res.ok) throw new Error("Offline"); return res.json(); }).then(data => {
@@ -62,20 +96,36 @@ export default function App() {
   const fetchOrders = async () => {
     setIsFetchingOrders(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/orders`);
-      setOrders(await res.json());
-      Swal.fire({ icon: 'success', title: 'Synced', text: 'Latest orders fetched!', confirmButtonColor: '#1A1A1A' });
-    } catch (err) { Swal.fire({ icon: 'error', title: 'Sync Failed', confirmButtonColor: '#1A1A1A' }); }
+      const res = await fetch(`${API_BASE}/admin/orders`); setOrders(await res.json());
+      const cRes = await fetch(`${API_BASE}/admin/coupons`); setAdminCoupons(await cRes.json());
+    } catch (err) {}
     setTimeout(() => setIsFetchingOrders(false), 500); 
   };
 
-  useEffect(() => { if (isAuthenticated && adminTab === 'orders') fetchOrders(); }, [isAuthenticated, adminTab]);
+  useEffect(() => { if (isAuthenticated) fetchOrders(); }, [isAuthenticated]);
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50); window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  let discountAmount = 0;
+  
+  if (appliedCoupon) {
+     let eligibleTotal = 0;
+     if (appliedCoupon.scope === 'category') {
+        eligibleTotal = cart.filter(item => item.categories?.includes(appliedCoupon.target) || item.category === appliedCoupon.target).reduce((s, i) => s + (i.price * i.qty), 0);
+     } else if (appliedCoupon.scope === 'product') {
+        eligibleTotal = cart.filter(item => (item._id || item.id) === appliedCoupon.target).reduce((s, i) => s + (i.price * i.qty), 0);
+     } else {
+        eligibleTotal = cartTotal;
+     }
+     if (eligibleTotal > 0) {
+        if (appliedCoupon.discountType === 'percent') { discountAmount = eligibleTotal * (appliedCoupon.discountValue / 100); } 
+        else { discountAmount = Math.min(appliedCoupon.discountValue, eligibleTotal); }
+     }
+  }
+  const finalTotal = Math.max(0, cartTotal - discountAmount);
   
   const filteredProducts = products.filter(p => {
     const pCats = p.categories?.length ? p.categories : [p.category];
@@ -85,7 +135,7 @@ export default function App() {
   });
 
   const getCityStock = (product, city = selectedCity) => product.stock?.[city] || 0;
-  const handleCitySelect = (city) => { setSelectedCity(city); localStorage.setItem('pc_selected_city', city); setView('store'); setCart([]); };
+  const handleCitySelect = (city) => { setSelectedCity(city); localStorage.setItem('pc_selected_city', city); navigateTo('store'); setCart([]); };
   
   const addToCart = (product) => {
     const availableStock = getCityStock(product);
@@ -110,11 +160,61 @@ export default function App() {
     }
   };
 
+  // --- NEW: CLOUDINARY IMAGE UPLOADER ---
+  const handleImageUpload = async (e, fieldName) => {
+     const file = e.target.files[0];
+     if(!file) return;
+     const reader = new FileReader();
+     reader.onloadend = async () => {
+        Swal.fire({ title: 'Uploading to Cloud...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        try {
+           const res = await fetch(`${API_BASE}/admin/upload`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: reader.result })
+           });
+           const data = await res.json();
+           if(res.ok) {
+              setEntryForm(prev => ({ ...prev, [fieldName]: data.url }));
+              Swal.close();
+           } else throw new Error();
+        } catch(err) {
+           Swal.fire({ icon: 'error', title: 'Upload Failed', confirmButtonColor: '#1A1A1A' });
+        }
+     };
+     reader.readAsDataURL(file);
+  };
+
+  const applyCoupon = async () => {
+     if(!couponCodeInput.trim()) return;
+     try {
+       const res = await fetch(`${API_BASE}/verify-coupon`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ code: couponCodeInput }) });
+       if(res.ok) {
+          const c = await res.json(); 
+          let elig = 0;
+          if (c.scope === 'category') elig = cart.filter(item => item.categories?.includes(c.target) || item.category === c.target).reduce((s, i) => s + (i.price * i.qty), 0);
+          else if (c.scope === 'product') elig = cart.filter(item => (item._id || item.id) === c.target).reduce((s, i) => s + (i.price * i.qty), 0);
+          else elig = cartTotal;
+
+          if (elig === 0) {
+             Swal.fire({ icon: 'error', title: 'Not Eligible', text: 'This coupon does not apply to the items currently in your cart.', confirmButtonColor: '#1A1A1A' });
+             setAppliedCoupon(null);
+             return;
+          }
+          setAppliedCoupon(c);
+          Swal.fire({ icon: 'success', title: 'Coupon Applied!', text: `You got ${c.discountType === 'percent' ? c.discountValue + '%' : 'PKR ' + c.discountValue} off eligible items.`, confirmButtonColor: '#1A1A1A' });
+       } else {
+          Swal.fire({ icon: 'error', title: 'Invalid Coupon', text: 'This code is invalid or expired.', confirmButtonColor: '#1A1A1A' });
+          setAppliedCoupon(null);
+       }
+     } catch(e) {}
+  };
+
   const submitOrder = async (e) => {
     e.preventDefault();
     if (checkoutForm.paymentMethod === 'TRF' && !checkoutForm.receipt) return Swal.fire({ icon: 'warning', title: 'Receipt Required', confirmButtonColor: '#1A1A1A' });
     const orderNum = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
-    const newOrder = { orderNumber: orderNum, date: new Date().toLocaleString(), items: [...cart], totalAmount: cartTotal, customer: checkoutForm, city: selectedCity, status: 'Pending' };
+    const newOrder = { orderNumber: orderNum, date: new Date().toLocaleString(), items: [...cart], totalAmount: finalTotal, discount: discountAmount, customer: checkoutForm, city: selectedCity, status: 'Pending' };
 
     try { 
       const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newOrder) });
@@ -132,38 +232,28 @@ export default function App() {
       service_id: 'service_hyfp919', template_id: 'template_nlst9qp', user_id: 'NHbYcpq7qYXu5mtf-', 
       template_params: {
         order_number: orderNum, customer_name: checkoutForm.name, customer_email: checkoutForm.email, phone: checkoutForm.phone, city: selectedCity, address: checkoutForm.address,
-        address_type: checkoutForm.addressType, map_link: checkoutForm.mapLink, secret_code: checkoutForm.secretCode, total: formatPrice(cartTotal), items: cart.map(i => `${i.qty}x ${i.name}`).join(', ')
+        address_type: checkoutForm.addressType, map_link: checkoutForm.mapLink, secret_code: checkoutForm.secretCode, total: formatPrice(finalTotal), items: cart.map(i => `${i.qty}x ${i.name}`).join(', ')
       }
     };
     fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(emailParams) }).catch(e=>e);
     
-    setCurrentOrder(newOrder); setCart([]); setView('order-success');
+    setCurrentOrder(newOrder); setCart([]); setAppliedCoupon(null); navigateTo('order-success');
   };
 
-  // --- ORDER TRACKING LOGIC ---
   const handleTrackOrder = async () => {
     if (!trackInput.trim()) return;
     try {
       const res = await fetch(`${API_BASE}/track-order/${trackInput}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTrackResult(data);
-      } else {
-         Swal.fire({ icon: 'error', title: 'Not Found', text: 'Order number not recognized.', confirmButtonColor: '#1A1A1A' });
-         setTrackResult(null);
-      }
-    } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Error', text: 'Tracking system offline.', confirmButtonColor: '#1A1A1A' });
-    }
+      if (res.ok) { setTrackResult(await res.json()); } else { Swal.fire({ icon: 'error', title: 'Not Found', confirmButtonColor: '#1A1A1A' }); setTrackResult(null); }
+    } catch (err) { Swal.fire({ icon: 'error', title: 'Error', confirmButtonColor: '#1A1A1A' }); }
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
       const res = await fetch(`${API_BASE}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-      if (res.ok) { setIsAuthenticated(true); setView('admin-dashboard'); }
-      else { Swal.fire({ icon: 'error', title: 'Access Denied', confirmButtonColor: '#1A1A1A' }); }
-    } catch (err) { if (username === 'admin' && password === 'Umarali667@') { setIsAuthenticated(true); setView('admin-dashboard'); } }
+      if (res.ok) { setIsAuthenticated(true); navigateTo('admin-dashboard'); } else { Swal.fire({ icon: 'error', title: 'Access Denied', confirmButtonColor: '#1A1A1A' }); }
+    } catch (err) { if (username === 'admin' && password === 'Umarali667@') { setIsAuthenticated(true); navigateTo('admin-dashboard'); } }
   };
 
   const updateOrderStatus = async (id, newStatus) => {
@@ -174,8 +264,7 @@ export default function App() {
   const calcOrderStats = () => {
     let stats = { total: { c: 0, w: 0 }, process: { c: 0, w: 0 }, complete: { c: 0, w: 0 } };
     orders.forEach(o => {
-      const w = o.totalAmount || 0;
-      stats.total.c++; stats.total.w += w;
+      const w = o.totalAmount || 0; stats.total.c++; stats.total.w += w;
       if (o.status === 'In Process' || o.status === 'Dispatched') { stats.process.c++; stats.process.w += w; }
       if (o.status === 'Completed') { stats.complete.c++; stats.complete.w += w; }
     });
@@ -189,25 +278,51 @@ export default function App() {
     try { await fetch(`${API_BASE}/admin/cities/reorder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cities: newCities }) }); } catch(e){}
   };
 
+  const handleDropCat = async (dropIdx) => {
+    if (draggedCatIdx === null || draggedCatIdx === dropIdx) return;
+    const editableCats = categories.filter(c => c !== "All");
+    const [draggedItem] = editableCats.splice(draggedCatIdx, 1);
+    editableCats.splice(dropIdx, 0, draggedItem); 
+    setCategories(["All", ...editableCats]); setDraggedCatIdx(null);
+    try { await fetch(`${API_BASE}/admin/categories/reorder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categories: editableCats }) }); } catch(e){}
+  };
+
   const submitNewCity = async (e) => {
     e.preventDefault(); const c = newCityName.trim();
-    if (c && !cities.includes(c)) {
-      setCities(prev => [...prev, c]);
-      try { await fetch(`${API_BASE}/admin/cities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) }); Swal.fire({ icon: 'success', title: 'Region Added', confirmButtonColor: '#1A1A1A' }); } catch (err) {}
-    }
+    if (c && !cities.includes(c)) { setCities(prev => [...prev, c]); try { await fetch(`${API_BASE}/admin/cities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) }); Swal.fire({ icon: 'success', title: 'Region Added', confirmButtonColor: '#1A1A1A' }); } catch (err) {} }
     setNewCityName('');
   };
   const deleteCity = async (cityName) => { setCities(prev => prev.filter(c => c !== cityName)); try { await fetch(`${API_BASE}/admin/cities/${cityName}`, { method: 'DELETE' }); } catch (err) {} };
 
   const submitNewCategory = async (e) => {
     e.preventDefault(); const c = newCategoryName.trim();
-    if (c && !categories.includes(c)) {
-      setCategories(prev => [...prev, c].sort());
-      try { await fetch(`${API_BASE}/admin/categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) }); } catch (err) {}
-    }
+    if (c && !categories.includes(c)) { setCategories(prev => [...prev, c]); try { await fetch(`${API_BASE}/admin/categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c }) }); } catch (err) {} }
     setNewCategoryName('');
   };
+  
+  const renameCategory = async (oldName) => {
+     const { value: newName } = await Swal.fire({ title: 'Rename Category', input: 'text', inputValue: oldName, showCancelButton: true, confirmButtonColor: '#1A1A1A' });
+     if(newName && newName !== oldName) {
+        setCategories(prev => prev.map(c => c === oldName ? newName : c));
+        try { await fetch(`${API_BASE}/admin/categories/${oldName}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({newName})}); } catch(e){}
+     }
+  };
   const deleteCategory = async (catName) => { setCategories(prev => prev.filter(c => c !== catName)); try { await fetch(`${API_BASE}/admin/categories/${catName}`, { method: 'DELETE' }); } catch (err) {} };
+
+  const submitNewCoupon = async (e) => {
+     e.preventDefault();
+     if (newCoupon.scope !== 'all' && !newCoupon.target) return Swal.fire({icon:'warning', title:'Target Required', text: 'Please select a specific category or product.', confirmButtonColor: '#1A1A1A'});
+     try {
+        const res = await fetch(`${API_BASE}/admin/coupons`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ code: newCoupon.code, discountType: newCoupon.type, discountValue: Number(newCoupon.value), scope: newCoupon.scope, target: newCoupon.target }) });
+        if(res.ok) { 
+           const newC = await res.json();
+           setAdminCoupons(prev => [newC, ...prev]); 
+           setNewCoupon({code:'', type:'percent', value:'', scope:'all', target:''}); 
+           Swal.fire({icon: 'success', title: 'Coupon Generated', confirmButtonColor: '#1A1A1A'}); 
+        }
+     } catch(e){}
+  };
+  const deleteCoupon = async (id) => { setAdminCoupons(prev => prev.filter(c => c._id !== id)); await fetch(`${API_BASE}/admin/coupons/${id}`, { method: 'DELETE' }); };
 
   const openEditModal = (product) => {
     setEntryForm({ 
@@ -223,14 +338,9 @@ export default function App() {
   const submitEntry = async (e) => {
     e.preventDefault();
     if (entryForm.categories.length === 0) return Swal.fire({icon: 'warning', title: 'Required', text: 'Select at least one category.', confirmButtonColor: '#1A1A1A'});
-    
     const imageUrls = [entryForm.image1, entryForm.image2, entryForm.image3].filter(Boolean);
     if(imageUrls.length === 0) imageUrls.push("🪴");
-
-    const payload = { 
-       name: entryForm.name, category: entryForm.categories[0], categories: entryForm.categories, 
-       price: Number(entryForm.price) || 0, stock: entryForm.stock, imageUrls, shortDesc: entryForm.desc 
-    };
+    const payload = { name: entryForm.name, category: entryForm.categories[0], categories: entryForm.categories, price: Number(entryForm.price) || 0, stock: entryForm.stock, imageUrls, shortDesc: entryForm.desc };
     
     try {
       if (isEditing) {
@@ -242,7 +352,7 @@ export default function App() {
         const saved = await res.json(); setProducts(prev => [saved, ...prev]);
         Swal.fire({ icon: 'success', title: 'Added', confirmButtonColor: '#1A1A1A' });
       }
-    } catch (err) { Swal.fire({ icon: 'error', title: 'Error saving' }); }
+    } catch (err) {}
     setShowEntryModal(false);
   };
 
@@ -298,7 +408,6 @@ export default function App() {
     }
   };
 
-  const BrandLogo = () => <img src="/logo.png" alt="Plants & Ceramics" className="h-12 md:h-16 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />;
   const isClientView = !view.includes('admin');
   const oStats = calcOrderStats();
 
@@ -307,7 +416,9 @@ export default function App() {
       {view === 'city-select' && (
         <div className="min-h-screen flex flex-col items-center justify-center animate-in fade-in duration-[1500ms] p-8">
           <div className="text-center max-w-xl w-full">
-            <div className="flex justify-center mb-8"><BrandLogo /><div className="hidden items-center gap-2 text-4xl font-serif">🌿 P&C.</div></div>
+            <div className="flex justify-center mb-8">
+               <BrandLogo iconSize="text-5xl md:text-6xl" textSize="text-4xl md:text-5xl" />
+            </div>
             <h1 className="text-4xl md:text-6xl font-serif leading-[1.1] tracking-tight mb-6 mt-8">Select your region.</h1>
             <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-16 border-b border-[#E5E0D8] pb-8">We curate specific logistics and inventory for each territory.</p>
             <div className="flex flex-col gap-4">
@@ -326,25 +437,27 @@ export default function App() {
           {isClientView && (
             <nav className={`fixed w-full top-0 z-40 transition-all duration-700 ${isScrolled ? 'bg-[#F7F5F0]/90 backdrop-blur-md py-4 shadow-sm' : 'bg-transparent py-8'}`}>
               <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex justify-between items-center">
+                
                 <div className="flex gap-8 items-center text-[10px] uppercase tracking-[0.2em] font-medium text-[#1A1A1A]/60">
-                  <button onClick={() => setView('store')} className="hover:text-[#1A1A1A]">Collection</button>
-                  {/* FEATURE: TRACK ORDER NAVBAR LINK */}
-                  {selectedCity && <button onClick={() => setView('track-order')} className="hover:text-[#1A1A1A] flex items-center gap-1"><Truck size={12}/> Track</button>}
+                  <button onClick={() => navigateTo('store')} className="hover:text-[#1A1A1A] flex items-center gap-1"><Home size={14}/> <span className="hidden md:inline">Home</span></button>
+                  {selectedCity && <button onClick={() => navigateTo('track-order')} className="hover:text-[#1A1A1A] flex items-center gap-1"><Truck size={14}/> Track</button>}
                 </div>
-                <div className="absolute left-1/2 -translate-x-1/2 cursor-pointer group" onClick={() => setView('store')}>
-                  <BrandLogo />
+                
+                <div className="absolute left-1/2 -translate-x-1/2">
+                   <BrandLogo iconSize="text-2xl md:text-3xl" textSize="text-xl md:text-2xl" />
                 </div>
+                
                 <div className="flex items-center gap-8">
-                  {selectedCity && <button onClick={() => setView('city-select')} className="hidden md:flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><MapPin size={10} /> {selectedCity}</button>}
-                  <button onClick={() => setView('cart')} className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] font-medium hover:text-[#2C3D30]"><span>Bag ({cart.reduce((sum, item) => sum + item.qty, 0)})</span></button>
+                  {selectedCity && <button onClick={() => navigateTo('city-select')} className="hidden md:flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]"><MapPin size={10} /> {selectedCity}</button>}
+                  <button onClick={() => navigateTo('cart')} className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] font-medium hover:text-[#2C3D30]"><span>Bag ({cart.reduce((sum, item) => sum + item.qty, 0)})</span></button>
                 </div>
+
               </div>
             </nav>
           )}
 
           <main className={isClientView ? "pt-32 pb-24 min-h-[80vh]" : "min-h-screen"}>
             
-            {/* FEATURE: ORDER TRACKING PAGE */}
             {view === 'track-order' && (
               <div className="min-h-[60vh] flex flex-col items-center justify-center px-8 animate-in fade-in">
                  <div className="text-center max-w-xl w-full">
@@ -384,9 +497,12 @@ export default function App() {
               <div className="animate-in fade-in duration-[1000ms]">
                 <div className="max-w-[90rem] mx-auto px-8 md:px-16 mb-16 pt-12">
                   <h1 className="text-5xl md:text-8xl font-serif leading-[1.1] tracking-tight mb-12">Cultivated <br className="hidden md:block"/>for the modern sanctuary.</h1>
-                  <div className="relative max-w-md w-full mb-8">
-                    <input type="text" placeholder="Search botanicals & ceramics..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-3 pl-8 text-sm focus:outline-none focus:border-[#1A1A1A] font-serif" />
-                    <Search size={16} className="absolute left-0 top-0.5 text-[#1A1A1A]/40" />
+                  
+                  <div className="flex justify-center w-full mb-12">
+                     <div className="relative max-w-2xl w-full">
+                       <input type="text" placeholder="Search botanicals & ceramics..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 pl-10 text-lg focus:outline-none focus:border-[#1A1A1A] font-serif" />
+                       <Search size={20} className="absolute left-0 top-1 text-[#1A1A1A]/40" />
+                     </div>
                   </div>
                   <div className="w-full h-[1px] bg-[#E5E0D8]"></div>
                 </div>
@@ -394,7 +510,7 @@ export default function App() {
                 <div className="max-w-[90rem] mx-auto px-8 md:px-16 flex flex-col lg:flex-row gap-16 xl:gap-32">
                   <aside className="w-full lg:w-48 shrink-0">
                     <div className="lg:sticky lg:top-32">
-                      <h3 className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 mb-8 border-b border-[#E5E0D8] pb-4">Index</h3>
+                      <h3 className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/40 mb-8 border-b border-[#E5E0D8] pb-4">Menu</h3>
                       <ul className="flex flex-wrap lg:flex-col gap-4 lg:gap-4 pb-4 lg:pb-0">
                         {categories.map(cat => (
                           <li key={cat}><button onClick={() => { setActiveCategory(cat); setVisibleCount(6); }} className={`text-xs uppercase tracking-[0.15em] whitespace-nowrap transition-all duration-500 ${activeCategory === cat ? 'text-[#1A1A1A] font-medium translate-x-2' : 'text-[#1A1A1A]/40 hover:text-[#1A1A1A]'}`}>{cat.replace("_", " ")}</button></li>
@@ -408,9 +524,9 @@ export default function App() {
                         const inStock = getCityStock(product) > 0;
                         const displayImg = product.imageUrls?.[0] || product.image || "🪴";
                         return (
-                        <div key={product.id || product._id} onClick={() => { setSelectedProduct(product); setActiveImageIdx(0); setView('product-detail'); }} className={`group flex flex-col cursor-pointer animate-in fade-in duration-700 ${!inStock && 'opacity-60 grayscale-[50%]'}`}>
+                        <div key={product.id || product._id} onClick={() => { setSelectedProduct(product); setActiveImageIdx(0); navigateTo('product-detail'); }} className={`group flex flex-col cursor-pointer animate-in fade-in duration-700 ${!inStock && 'opacity-60 grayscale-[50%]'}`}>
                           <div className="w-full aspect-[4/5] bg-[#EBE6E0] mb-6 relative overflow-hidden flex items-center justify-center text-8xl transition-colors duration-700">
-                            {displayImg.includes('http') ? <img src={displayImg} alt={product.name} className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-[1500ms]" onError={(e) => e.target.src='https://via.placeholder.com/400x500?text=P%26C'} /> : <span className="transform group-hover:scale-110 transition-transform duration-[1500ms]">{displayImg}</span>}
+                            {displayImg.includes('http') ? <img src={displayImg} alt={product.name} className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-[1500ms]" /> : <span className="transform group-hover:scale-110 transition-transform duration-[1500ms]">{displayImg}</span>}
                             {inStock && (
                               <div className="absolute bottom-0 left-0 w-full p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-500">
                                 <button onClick={(e) => { e.stopPropagation(); addToCart(product); }} className="w-full bg-[#1A1A1A]/90 backdrop-blur-sm text-[#F7F5F0] py-4 text-[10px] uppercase tracking-[0.2em] font-medium hover:bg-[#2C3D30] flex justify-center items-center gap-3">Add to Order <Plus size={12} strokeWidth={1} /></button>
@@ -431,7 +547,7 @@ export default function App() {
 
             {view === 'product-detail' && selectedProduct && (
               <div className="max-w-[90rem] mx-auto px-8 md:px-16 animate-in fade-in">
-                <button onClick={() => setView('store')} className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60 hover:text-[#1A1A1A] mb-12 border-b border-transparent hover:border-[#1A1A1A] pb-1 w-fit"><ArrowLeft size={12} strokeWidth={1} /> Back</button>
+                <button onClick={() => navigateTo('store')} className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/60 hover:text-[#1A1A1A] mb-12 border-b border-transparent hover:border-[#1A1A1A] pb-1 w-fit"><ArrowLeft size={12} strokeWidth={1} /> Back</button>
                 <div className="flex flex-col md:flex-row gap-16 lg:gap-32">
                   
                   <div className="w-full md:w-1/2 flex flex-col gap-4">
@@ -455,7 +571,7 @@ export default function App() {
                     <p className="text-2xl font-light tracking-widest text-[#1A1A1A] mb-12 border-b border-[#E5E0D8] pb-12">{formatPrice(selectedProduct.price)}</p>
                     <div className="space-y-6 text-[#1A1A1A]/70 font-light leading-relaxed mb-16 text-sm"><p>{selectedProduct.longDesc || selectedProduct.shortDesc}</p></div>
                     {getCityStock(selectedProduct) > 0 ? (
-                      <button onClick={() => { addToCart(selectedProduct); setView('cart'); }} className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-6 flex items-center justify-center gap-3">Add to Order <MoveRight size={14} strokeWidth={1} /></button>
+                      <button onClick={() => { addToCart(selectedProduct); navigateTo('cart'); }} className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-6 flex items-center justify-center gap-3">Add to Order <MoveRight size={14} strokeWidth={1} /></button>
                     ) : ( <button disabled className="w-full bg-[#E5E0D8] text-[#1A1A1A]/50 text-[10px] uppercase tracking-[0.3em] py-6 cursor-not-allowed">Unavailable in {selectedCity}</button>)}
                   </div>
                 </div>
@@ -464,7 +580,7 @@ export default function App() {
 
             {view === 'cart' && (
               <div className="max-w-5xl mx-auto px-8 md:px-16 animate-in fade-in">
-                <div className="mb-16 border-b border-[#1A1A1A] pb-8 flex justify-between items-end"><h2 className="text-5xl font-serif mb-4">Your Order</h2><button onClick={() => setView('store')} className="text-[10px] uppercase tracking-[0.2em] hover:opacity-50">Return</button></div>
+                <div className="mb-16 border-b border-[#1A1A1A] pb-8 flex justify-between items-end"><h2 className="text-5xl font-serif mb-4">Your Order</h2><button onClick={() => navigateTo('store')} className="text-[10px] uppercase tracking-[0.2em] hover:opacity-50">Return</button></div>
                 {cart.length === 0 ? (
                   <p className="text-2xl font-serif text-[#1A1A1A]/40 mb-8 text-center py-32">Your bag contains no items.</p>
                 ) : (
@@ -484,8 +600,30 @@ export default function App() {
                     </div>
                     <div className="lg:col-span-5">
                       <div className="bg-[#EBE6E0] p-10 h-fit">
-                        <div className="flex justify-between items-end mb-12"><span className="text-[10px] uppercase tracking-[0.3em]">Total</span><span className="text-3xl font-serif">{formatPrice(cartTotal)}</span></div>
-                        <button onClick={() => setView('checkout')} className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 flex justify-center items-center gap-3">Finalize Order <MoveRight size={14} /></button>
+                        
+                        <div className="mb-8 pb-8 border-b border-[#1A1A1A]/10">
+                           <p className="text-[10px] uppercase tracking-[0.3em] mb-4">Promo Code</p>
+                           <div className="flex gap-2">
+                             <input type="text" placeholder="Enter code" value={couponCodeInput} onChange={e=>setCouponCodeInput(e.target.value)} className="flex-1 bg-white border border-transparent focus:border-[#1A1A1A] px-4 py-2 text-sm outline-none uppercase font-mono" />
+                             <button onClick={applyCoupon} className="bg-[#1A1A1A] text-white px-4 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30]">Apply</button>
+                           </div>
+                        </div>
+
+                        <div className="space-y-4 mb-12">
+                           <div className="flex justify-between items-end"><span className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/60">Subtotal</span><span className="text-lg font-serif">{formatPrice(cartTotal)}</span></div>
+                           {appliedCoupon && (
+                             <div className="flex justify-between items-end text-green-800">
+                               <span className="text-[10px] uppercase tracking-[0.3em] flex flex-col gap-1">
+                                  <span className="flex items-center gap-1"><Ticket size={12}/> {appliedCoupon.code}</span>
+                                  {appliedCoupon.scope === 'category' && <span className="text-[8px] opacity-70">Valid on: {appliedCoupon.target}</span>}
+                                  {appliedCoupon.scope === 'product' && <span className="text-[8px] opacity-70">Valid on selected item</span>}
+                               </span>
+                               <span className="text-lg font-serif">- {formatPrice(discountAmount)}</span>
+                             </div>
+                           )}
+                           <div className="flex justify-between items-end pt-4 border-t border-[#1A1A1A]/20"><span className="text-[10px] uppercase tracking-[0.3em]">Total</span><span className="text-3xl font-serif">{formatPrice(finalTotal)}</span></div>
+                        </div>
+                        <button onClick={() => navigateTo('checkout')} className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 flex justify-center items-center gap-3">Finalize Order <MoveRight size={14} /></button>
                       </div>
                     </div>
                   </div>
@@ -538,7 +676,7 @@ export default function App() {
                   </div>
                   <div className="lg:col-span-5">
                     <div className="bg-[#EBE6E0] p-10 h-fit sticky top-32">
-                      <h3 className="text-[10px] uppercase tracking-[0.3em] mb-8 border-b border-[#1A1A1A]/10 pb-4">Order Total: {formatPrice(cartTotal)}</h3>
+                      <h3 className="text-[10px] uppercase tracking-[0.3em] mb-8 border-b border-[#1A1A1A]/10 pb-4">Order Total: {formatPrice(finalTotal)}</h3>
                       <button type="submit" className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5">Authorize Order</button>
                     </div>
                   </div>
@@ -548,12 +686,15 @@ export default function App() {
 
             {view === 'order-success' && currentOrder && (
               <div className="max-w-2xl mx-auto px-8 py-32 text-center animate-in fade-in">
-                <div className="flex justify-center mb-12"><BrandLogo /></div>
-                <h2 className="text-6xl font-serif mb-8 text-[#2C3D30]">Acquired.</h2>
+                <div className="flex justify-center mb-12">
+                   <BrandLogo iconSize="text-5xl md:text-6xl" textSize="text-4xl md:text-5xl" />
+                </div>
+                <h2 className="text-6xl font-serif mb-6 text-[#2C3D30]">Acquired.</h2>
+                <p className="text-2xl font-serif text-[#1A1A1A] mb-8 italic leading-relaxed">"We know you have many choices—<br/>thank you for picking us."</p>
                 <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-6">Reference: <span className="bg-[#1A1A1A] text-white px-2 py-1 font-bold">{currentOrder.orderNumber || currentOrder.id}</span></p>
-                <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">Your selections have been reserved for dispatch in {selectedCity}.<br/><br/>Please prepare {formatPrice(cartTotal)}.</p>
-                <button onClick={() => setView('track-order')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] mb-4 block mx-auto">Track this Order</button>
-                <button onClick={() => setView('store')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30]">Return to Collection</button>
+                <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">Your selections have been reserved for dispatch in {selectedCity}.<br/><br/>Please prepare {formatPrice(finalTotal)}.</p>
+                <button onClick={() => navigateTo('track-order')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] mb-4 block mx-auto">Track this Order</button>
+                <button onClick={() => navigateTo('store')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30]">Return to Collection</button>
               </div>
             )}
 
@@ -566,7 +707,7 @@ export default function App() {
                   <input type="password" placeholder="Passcode" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-4 focus:outline-none" required />
                   <button type="submit" className="w-full bg-[#1A1A1A] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 mt-8 hover:bg-[#2C3D30]">Authenticate</button>
                 </form>
-                <button onClick={() => { window.history.pushState({}, '', '/'); setView('store'); }} className="mt-12 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Return to Storefront</button>
+                <button onClick={() => { navigateTo('store'); }} className="mt-12 text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-[#1A1A1A]">Return to Storefront</button>
               </div>
             )}
 
@@ -580,6 +721,7 @@ export default function App() {
                       <button onClick={() => setAdminTab('orders')} className={`pb-2 ${adminTab === 'orders' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Orders</button>
                       <button onClick={() => setAdminTab('cities')} className={`pb-2 ${adminTab === 'cities' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Regions</button>
                       <button onClick={() => setAdminTab('categories')} className={`pb-2 ${adminTab === 'categories' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Categories</button>
+                      <button onClick={() => setAdminTab('coupons')} className={`pb-2 ${adminTab === 'coupons' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Coupons</button>
                     </div>
                   </div>
                   <div className="flex gap-4 items-center">
@@ -603,9 +745,62 @@ export default function App() {
                         <button onClick={() => setShowCSVModal(true)} className="text-[10px] uppercase tracking-[0.2em] bg-[#EBE6E0] text-[#1A1A1A] px-4 md:px-6 py-3 hover:bg-[#1A1A1A] hover:text-[#F7F5F0] border border-[#1A1A1A]/10 hidden md:block">Bulk CSV</button>
                       </div>
                     )}
-                    <button onClick={() => { setIsAuthenticated(false); setView('store'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-red-800 ml-4 md:ml-8">Logout</button>
+                    <button onClick={() => { setIsAuthenticated(false); navigateTo('store'); }} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 hover:text-red-800 ml-4 md:ml-8">Logout</button>
                   </div>
                 </div>
+
+                {adminTab === 'coupons' && (
+                  <div className="max-w-5xl animate-in fade-in">
+                    <form onSubmit={submitNewCoupon} className="mb-12 grid grid-cols-1 md:grid-cols-5 gap-4 bg-white p-6 border border-[#E5E0D8]">
+                      
+                      <input type="text" placeholder="CODE (e.g. SALE20)" value={newCoupon.code} onChange={e => setNewCoupon({...newCoupon, code: e.target.value.toUpperCase()})} className="bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none uppercase font-mono" required/>
+                      
+                      <select value={newCoupon.type} onChange={e => setNewCoupon({...newCoupon, type: e.target.value})} className="bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none cursor-pointer">
+                         <option value="percent">Percentage (%)</option>
+                         <option value="fixed">Flat Rate (PKR)</option>
+                      </select>
+                      
+                      <input type="number" placeholder="Value (e.g. 15)" value={newCoupon.value} onChange={e => setNewCoupon({...newCoupon, value: e.target.value})} className="bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none" required/>
+                      
+                      <select value={newCoupon.scope} onChange={e => setNewCoupon({...newCoupon, scope: e.target.value, target: ''})} className="bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none cursor-pointer">
+                         <option value="all">All Products</option>
+                         <option value="category">Specific Category</option>
+                         <option value="product">Specific Product</option>
+                      </select>
+
+                      {newCoupon.scope === 'category' && (
+                         <select value={newCoupon.target} onChange={e => setNewCoupon({...newCoupon, target: e.target.value})} className="bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none cursor-pointer" required>
+                           <option value="">Select Category...</option>
+                           {categories.filter(c=>c!=="All").map(c => <option key={c} value={c}>{c}</option>)}
+                         </select>
+                      )}
+
+                      {newCoupon.scope === 'product' && (
+                         <select value={newCoupon.target} onChange={e => setNewCoupon({...newCoupon, target: e.target.value})} className="bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none cursor-pointer" required>
+                           <option value="">Select Product...</option>
+                           {products.map(p => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
+                         </select>
+                      )}
+
+                      <button type="submit" className="md:col-span-5 bg-[#1A1A1A] text-white px-8 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30] mt-4">Generate</button>
+                    </form>
+                    
+                    <div className="space-y-4">
+                      {adminCoupons.map(c => {
+                         const targetName = c.scope === 'product' ? products.find(p=>p._id===c.target)?.name || c.target : c.target;
+                         return (
+                        <div key={c._id} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8] shadow-sm">
+                          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-8">
+                             <span className="text-xl font-mono font-bold bg-[#EBE6E0] px-3 py-1 tracking-widest">{c.code}</span>
+                             <span className="text-sm text-[#1A1A1A]/70">Discount: {c.discountType === 'percent' ? c.discountValue + '%' : 'PKR ' + c.discountValue}</span>
+                             <span className="text-sm text-[#1A1A1A]/70 capitalize bg-gray-50 px-2 py-1">Scope: {c.scope} {c.target && `(${targetName})`}</span>
+                          </div>
+                          <button onClick={() => deleteCoupon(c._id)} className="text-[10px] uppercase tracking-[0.2em] text-red-900 hover:text-red-700">Delete</button>
+                        </div>
+                      )})}
+                    </div>
+                  </div>
+                )}
 
                 {adminTab === 'categories' && (
                   <div className="max-w-3xl animate-in fade-in">
@@ -613,11 +808,15 @@ export default function App() {
                       <input type="text" placeholder="New Category Name..." value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} className="flex-1 bg-transparent border-b border-[#1A1A1A]/20 pb-3 text-sm focus:outline-none" required/>
                       <button type="submit" className="bg-[#1A1A1A] text-white px-8 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30]">Create Category</button>
                     </form>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-4">Drag and drop to reorder</p>
                     <div className="space-y-4">
-                      {categories.map(cat => (
-                        <div key={cat} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8]">
-                          <span className="text-lg font-serif">{cat}</span>
-                          <button onClick={() => deleteCategory(cat)} className="text-[10px] uppercase tracking-[0.2em] text-red-900 hover:text-red-700">Remove</button>
+                      {categories.filter(c => c !== "All").map((cat, idx) => (
+                        <div key={cat} draggable onDragStart={() => setDraggedCatIdx(idx)} onDragOver={(e) => e.preventDefault()} onDrop={() => handleDropCat(idx)} className="flex justify-between items-center bg-white p-6 border border-[#E5E0D8] shadow-sm cursor-grab active:cursor-grabbing hover:border-[#1A1A1A]/30 transition-colors">
+                          <span className="text-lg font-serif flex items-center gap-4"><GripVertical size={16} className="text-[#1A1A1A]/30" /> {cat}</span>
+                          <div className="flex gap-6">
+                             <button onClick={() => renameCategory(cat)} className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 hover:text-[#1A1A1A]">Rename</button>
+                             <button onClick={() => deleteCategory(cat)} className="text-[10px] uppercase tracking-[0.2em] text-red-900 hover:text-red-700">Remove</button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -697,6 +896,7 @@ export default function App() {
                                 </div>
                                 <div>
                                    <p className="mb-2"><strong>Payment:</strong> {order.customer?.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}</p>
+                                   {order.discount > 0 && <p className="mb-2 text-green-700"><strong>Discount Applied:</strong> PKR {order.discount}</p>}
                                    {order.customer?.secretCode && <p className="mb-2"><strong>Secret Code:</strong> <span className="font-mono bg-yellow-100 px-2 font-bold">{order.customer.secretCode}</span></p>}
                                    <p className="mb-2"><strong>Items:</strong> {order.items?.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
                                    {order.customer?.receipt && (
@@ -773,13 +973,16 @@ export default function App() {
             )}
           </main>
 
+          {/* FOOTER - LEFT ALIGNED LOGO INTACT */}
           {isClientView && (
             <footer className="border-t border-[#E5E0D8] py-16 mt-auto">
               <div className="max-w-[90rem] mx-auto px-8 flex flex-col md:flex-row justify-between items-center gap-8">
+                
                 <div className="flex flex-col items-center md:items-start shrink-0">
-                  <BrandLogo />
-                  <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50 mt-1">Plants & Ceramics</span>
+                  <BrandLogo iconSize="text-3xl md:text-4xl" textSize="text-2xl md:text-3xl" />
+                  <span className="text-[8px] uppercase tracking-[0.4em] text-[#1A1A1A]/50 mt-2">Plants & Ceramics</span>
                 </div>
+
                 <div className="text-center md:text-right">
                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40 mb-1">Curated in Karachi, Pakistan.</p>
                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/40">Developed & Maintained by <a href="https://doubbletech.com" target="_blank" rel="noreferrer" className="text-[#1A1A1A] font-bold hover:underline">DoubbleTech.com</a></p>
@@ -833,12 +1036,29 @@ export default function App() {
                      <p className="text-[10px] text-[#1A1A1A]/40 mt-2 italic">* Set stock to 0 to hide this product from a specific city.</p>
                   </div>
 
+                  {/* FEATURE: CLOUDINARY UPLOAD BUTTONS IN FORM */}
                   <div>
-                     <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-4 block border-b border-[#1A1A1A]/10 pb-2">Image Gallery (Links or Emojis)</label>
+                     <label className="text-[10px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 mb-4 block border-b border-[#1A1A1A]/10 pb-2">Image Gallery</label>
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <input type="text" placeholder="Image URL 1" value={entryForm.image1} onChange={e=>setEntryForm({...entryForm, image1: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
-                        <input type="text" placeholder="Image URL 2 (Optional)" value={entryForm.image2} onChange={e=>setEntryForm({...entryForm, image2: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
-                        <input type="text" placeholder="Image URL 3 (Optional)" value={entryForm.image3} onChange={e=>setEntryForm({...entryForm, image3: e.target.value})} className="w-full bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                        
+                        <div className="flex gap-2">
+                           <input type="text" placeholder="URL or Emoji" value={entryForm.image1} onChange={e=>setEntryForm({...entryForm, image1: e.target.value})} className="flex-1 bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                           <input type="file" id="img1" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'image1')} />
+                           <label htmlFor="img1" className="bg-[#EBE6E0] cursor-pointer px-4 py-3 text-[10px] uppercase tracking-widest hover:bg-[#1A1A1A] hover:text-white flex items-center justify-center"><UploadCloud size={14} /></label>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                           <input type="text" placeholder="URL or Emoji" value={entryForm.image2} onChange={e=>setEntryForm({...entryForm, image2: e.target.value})} className="flex-1 bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                           <input type="file" id="img2" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'image2')} />
+                           <label htmlFor="img2" className="bg-[#EBE6E0] cursor-pointer px-4 py-3 text-[10px] uppercase tracking-widest hover:bg-[#1A1A1A] hover:text-white flex items-center justify-center"><UploadCloud size={14} /></label>
+                        </div>
+
+                        <div className="flex gap-2">
+                           <input type="text" placeholder="URL or Emoji" value={entryForm.image3} onChange={e=>setEntryForm({...entryForm, image3: e.target.value})} className="flex-1 bg-white border border-[#E5E0D8] p-3 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                           <input type="file" id="img3" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'image3')} />
+                           <label htmlFor="img3" className="bg-[#EBE6E0] cursor-pointer px-4 py-3 text-[10px] uppercase tracking-widest hover:bg-[#1A1A1A] hover:text-white flex items-center justify-center"><UploadCloud size={14} /></label>
+                        </div>
+
                      </div>
                   </div>
 
