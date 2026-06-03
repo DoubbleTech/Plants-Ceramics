@@ -4,7 +4,7 @@ import { Plus, ArrowLeft, Lock, MoveRight, MapPin, RefreshCw, X, Download, GripV
 const API_BASE = `/api`;
 const formatPrice = (price) => `PKR ${Number(price).toLocaleString()}`;
 
-// NEW: Logistics Delivery Tier Configuration
+// Logistics Delivery Tier Configuration
 const DELIVERY_TIERS = {
   T1: { id: 'T1', name: 'Small Plant', base: 150, extended: 250, label: 'Standard Bike (Bag)' },
   T2: { id: 'T2', name: 'Medium Plant', base: 250, extended: 400, label: 'Standard Bike (Crate)' },
@@ -40,15 +40,17 @@ export default function App() {
 
   const [checkoutForm, setCheckoutForm] = useState({ name: '', email: '', phone: '', address: '', mapLink: '', addressType: 'Home', secretCode: '', instructions: '', paymentMethod: 'COD', receipt: null });
   const [isPaymentDropdownOpen, setIsPaymentDropdownOpen] = useState(false);
-  const [distanceType, setDistanceType] = useState('short'); // NEW: Logistics selection
+  const [distanceType, setDistanceType] = useState('short'); 
+
+  // Store Global Settings with safe defaults
+  const [storeSettings, setStoreSettings] = useState({ 
+     freeDeliveryThreshold: 9999, 
+     payment: { cod: true, trf: true, card: false, bankDetails: 'Meezan Bank | A/C 0123456789 | Doubble Tech', gateway: {} } 
+  });
 
   const [couponCodeInput, setCouponCodeInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(null);
-  
-  const [promoBanner, setPromoBanner] = useState(() => {
-    const savedBanner = localStorage.getItem('pc_promo_banner');
-    return savedBanner ? JSON.parse(savedBanner) : { isActive: false, text: '🎉 FLASH SALE: USE CODE BOTANICAL20 FOR 20% OFF!' };
-  });
+  const [promoBanner, setPromoBanner] = useState({ isActive: false, text: '🎉 FLASH SALE: USE CODE BOTANICAL20 FOR 20% OFF!' });
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
@@ -67,7 +69,6 @@ export default function App() {
   const [adminCoupons, setAdminCoupons] = useState([]);
   const [newCoupon, setNewCoupon] = useState({ _id: null, code: '', type: 'percent', value: '', scope: 'all', target: '', startDate: '', endDate: '', maxUses: '' });
 
-  // NEW: Added shippingTier to initialization
   const [entryForm, setEntryForm] = useState({ id: null, name: '', categories: [], price: '', stock: {}, shippingTier: 'T1', image1: '', image2: '', image3: '', shortDesc: '', longDesc: '', careWater: '', careSunlight: '', careClimate: '', careBenefits: '' });
   const [bulkEditForm, setBulkEditForm] = useState({ categories: [], city: '', stock: '' });
 
@@ -118,6 +119,10 @@ export default function App() {
       if(data.products) setProducts(data.products);
       if(data.cities && data.cities.length > 0) setCities(data.cities);
       if(data.categories && data.categories.length > 0) setCategories(data.categories);
+      if(data.settings) {
+         setStoreSettings(prev => ({ ...prev, ...data.settings }));
+         if(data.settings.promoBanner) setPromoBanner(data.settings.promoBanner);
+      }
     }).catch(e => e);
   }, []);
 
@@ -132,6 +137,13 @@ export default function App() {
       
       const cRes = await fetch(`${API_BASE}/admin/coupons`, { headers: { 'Authorization': `Bearer ${token}` } }); 
       if (cRes.ok) setAdminCoupons(await cRes.json());
+
+      // Fetch Full Settings with Secret Keys for Admin View
+      const sRes = await fetch(`${API_BASE}/admin/settings`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (sRes.ok) {
+         const adminSets = await sRes.json();
+         setStoreSettings(prev => ({ ...prev, ...adminSets }));
+      }
     } catch (err) { setOrders([]); }
     setTimeout(() => setIsFetchingOrders(false), 500); 
   };
@@ -142,55 +154,53 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Set default payment method logic based on active toggles
+  useEffect(() => {
+    const activeMethods = [];
+    if (storeSettings.payment?.cod) activeMethods.push('COD');
+    if (storeSettings.payment?.trf) activeMethods.push('TRF');
+    if (storeSettings.payment?.card) activeMethods.push('CARD');
+    
+    if (activeMethods.length > 0 && !activeMethods.includes(checkoutForm.paymentMethod)) {
+       setCheckoutForm(prev => ({ ...prev, paymentMethod: activeMethods[0] }));
+    }
+  }, [storeSettings.payment, checkoutForm.paymentMethod]);
+
   const exportMarketingCSV = () => {
      const uniqueEmails = Array.from(new Set(orders.map(o => o.customer?.email).filter(Boolean)));
      if (uniqueEmails.length === 0) return showPopup('warning', 'No Data', 'There are no client records to export.');
-     
      let csv = "Sequence,Client Name,Email Address,Phone Number\n";
      uniqueEmails.forEach((email, idx) => {
         const client = orders.find(o => o.customer?.email === email)?.customer;
-        if (client) {
-           csv += `${idx + 1},"${client.name || ''}","${client.email || ''}","${client.phone || ''}"\n`;
-        }
+        if (client) csv += `${idx + 1},"${client.name || ''}","${client.email || ''}","${client.phone || ''}"\n`;
      });
-
      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-     const link = document.createElement("a");
-     const url = URL.createObjectURL(blob);
-     link.setAttribute("href", url);
-     link.setAttribute("download", `Marketing_Directory_${new Date().toISOString().split('T')[0]}.csv`);
-     document.body.appendChild(link);
-     link.click();
-     document.body.removeChild(link);
+     const link = document.createElement("a"); const url = URL.createObjectURL(blob);
+     link.setAttribute("href", url); link.setAttribute("download", `Marketing_Directory_${new Date().toISOString().split('T')[0]}.csv`);
+     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
-  // NEW: Updated Cart Logic for Tiered Delivery
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-
   const activeShippingTier = cart.reduce((highest, item) => {
-    const currentTier = item.shippingTier || 'T1'; 
     const tierWeights = { T1: 1, T2: 2, T3: 3, T4: 4, T5: 5 };
-    return tierWeights[currentTier] > tierWeights[highest] ? currentTier : highest;
+    return tierWeights[item.shippingTier || 'T1'] > tierWeights[highest] ? (item.shippingTier || 'T1') : highest;
   }, 'T1');
 
-  const deliveryCharges = cart.length > 0 
-    ? (distanceType === 'short' ? DELIVERY_TIERS[activeShippingTier].base : DELIVERY_TIERS[activeShippingTier].extended)
-    : 0;
+  let deliveryCharges = cart.length > 0 ? (distanceType === 'short' ? DELIVERY_TIERS[activeShippingTier].base : DELIVERY_TIERS[activeShippingTier].extended) : 0;
+  const originalDeliveryCharge = deliveryCharges; 
+  const isFreeDelivery = cartTotal >= storeSettings.freeDeliveryThreshold;
+  if (isFreeDelivery) deliveryCharges = 0;
 
   let discountAmount = 0;
   if (appliedCoupon) {
      let eligibleTotal = 0;
-     if (appliedCoupon.scope === 'category') {
-        eligibleTotal = cart.filter(item => item.categories?.includes(appliedCoupon.target) || item.category === appliedCoupon.target).reduce((s, i) => s + (i.price * i.qty), 0);
-     } else if (appliedCoupon.scope === 'product') {
-        eligibleTotal = cart.filter(item => (item._id || item.id) === appliedCoupon.target).reduce((s, i) => s + (i.price * i.qty), 0);
-     } else {
-        eligibleTotal = cartTotal;
-     }
+     if (appliedCoupon.scope === 'category') eligibleTotal = cart.filter(item => item.categories?.includes(appliedCoupon.target) || item.category === appliedCoupon.target).reduce((s, i) => s + (i.price * i.qty), 0);
+     else if (appliedCoupon.scope === 'product') eligibleTotal = cart.filter(item => (item._id || item.id) === appliedCoupon.target).reduce((s, i) => s + (i.price * i.qty), 0);
+     else eligibleTotal = cartTotal;
 
      if (eligibleTotal > 0) {
-        if (appliedCoupon.discountType === 'percent') { discountAmount = eligibleTotal * (appliedCoupon.discountValue / 100); } 
-        else { discountAmount = Math.min(appliedCoupon.discountValue, eligibleTotal); }
+        if (appliedCoupon.discountType === 'percent') discountAmount = eligibleTotal * (appliedCoupon.discountValue / 100); 
+        else discountAmount = Math.min(appliedCoupon.discountValue, eligibleTotal);
      }
   }
   const finalTotal = Math.max(0, cartTotal - discountAmount + deliveryCharges);
@@ -245,12 +255,10 @@ export default function App() {
      if(!file) return;
      const reader = new FileReader();
      reader.onloadend = async () => {
-        showPopup('loading', 'Uploading to Cloud...', 'Please wait while we secure your image.');
+        showPopup('loading', 'Uploading to Cloud...', 'Please wait while I secure your image.');
         try {
            const token = localStorage.getItem('adminToken');
-           const res = await fetch(`${API_BASE}/admin/upload`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ image: reader.result })
-           });
+           const res = await fetch(`${API_BASE}/admin/upload`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ image: reader.result }) });
            const data = await res.json();
            if(res.ok) { setEntryForm(prev => ({ ...prev, [fieldName]: data.url })); closePopup(); } else throw new Error();
         } catch(err) { showPopup('error', 'Upload Failed', 'There was an issue reaching the cloud server.'); }
@@ -264,66 +272,49 @@ export default function App() {
      try {
        const res = await fetch(`${API_BASE}/verify-coupon`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ code: couponCodeInput }) });
        const data = await res.json();
-       
        if(res.ok) {
           let elig = 0;
           if (data.scope === 'category') elig = cart.filter(item => item.categories?.includes(data.target) || item.category === data.target).reduce((s, i) => s + (i.price * i.qty), 0);
           else if (data.scope === 'product') elig = cart.filter(item => (item._id || item.id) === data.target).reduce((s, i) => s + (i.price * i.qty), 0);
           else elig = cartTotal;
 
-          if (elig === 0) {
-             showPopup('error', 'Not Eligible', 'This coupon does not apply to the items currently in your cart.');
-             setAppliedCoupon(null);
-             return;
-          }
+          if (elig === 0) { showPopup('error', 'Not Eligible', 'This coupon does not apply to the items currently in your cart.'); setAppliedCoupon(null); return; }
           setAppliedCoupon(data);
           showPopup('success', 'Coupon Applied', `You received a discount on eligible items!`, 2000);
-       } else {
-          showPopup('error', 'Invalid Coupon', data.error || 'This code is invalid or expired.');
-          setAppliedCoupon(null);
-       }
+       } else { showPopup('error', 'Invalid Coupon', data.error || 'This code is invalid or expired.'); setAppliedCoupon(null); }
      } catch(e) { showPopup('error', 'Error', 'Failed to verify coupon.'); }
   };
 
-  // NEW: Updated Order Payload
   const submitOrder = async (e) => {
     e.preventDefault();
     if (checkoutForm.phone.replace(/\D/g, '').length < 10) return showPopup('warning', 'Invalid Phone', 'Please provide a valid phone number for shipping updates.');
     if (checkoutForm.paymentMethod === 'TRF' && !checkoutForm.receipt) return showPopup('warning', 'Receipt Required', 'Please upload your bank transfer screenshot.');
     
+    // Future Merchant Gateway Integration Hook
+    if (checkoutForm.paymentMethod === 'CARD') {
+       // When merchant account is active, the SDK tokenization call goes here before hitting your backend API.
+       // For now, it bypasses normally so you can test the UI flow.
+    }
+
     const orderNum = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
     const newOrder = { 
-      orderNumber: orderNum, 
-      date: new Date().toLocaleString(), 
-      items: [...cart], 
-      totalAmount: finalTotal, 
-      discount: discountAmount, 
-      deliveryCharges: deliveryCharges,      // <-- Applied
-      shippingTier: activeShippingTier,      // <-- Applied
-      distanceType: distanceType,            // <-- Applied
-      couponCode: appliedCoupon?.code || null, 
-      customer: checkoutForm, 
-      city: selectedCity, 
-      status: 'Pending' 
+      orderNumber: orderNum, date: new Date().toLocaleString(), items: [...cart], 
+      totalAmount: finalTotal, discount: discountAmount, deliveryCharges: deliveryCharges,      
+      shippingTier: activeShippingTier, distanceType: distanceType, couponCode: appliedCoupon?.code || null, 
+      customer: checkoutForm, city: selectedCity, status: 'Pending' 
     };
 
     showPopup('loading', 'Finalizing Order...', 'Securing your botanicals.');
     
     try { 
       const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newOrder) });
-      
-      if (!res.ok) {
-         const errData = await res.json();
-         showPopup('error', 'Order Failed', errData.error || 'The system could not secure this order.');
-         return; 
-      }
+      if (!res.ok) { const errData = await res.json(); showPopup('error', 'Order Failed', errData.error || 'The system could not secure this order.'); return; }
 
       setProducts(prev => prev.map(p => {
          const cartItem = cart.find(ci => ci._id === p._id || ci.id === p.id);
          if (cartItem) { const uStock = { ...p.stock }; uStock[selectedCity] = Math.max(0, (uStock[selectedCity] || 0) - cartItem.qty); return { ...p, stock: uStock }; }
          return p;
       }));
-      
       setOrders(prev => [newOrder, ...prev]);
 
       const emailParams = {
@@ -332,25 +323,18 @@ export default function App() {
            order_number: orderNum, customer_name: checkoutForm.name, customer_email: checkoutForm.email, 
            phone: checkoutForm.phone, city: selectedCity, address: checkoutForm.address, address_type: checkoutForm.addressType, 
            map_link: checkoutForm.mapLink, secret_code: checkoutForm.secretCode, total: formatPrice(finalTotal), 
-           delivery_charges: formatPrice(deliveryCharges), // <-- Added to email payload
+           delivery_charges: isFreeDelivery ? 'FREE' : formatPrice(deliveryCharges), 
            items: cart.map(i => `${i.qty}x ${i.name}`).join(', ') 
          }
       };
       fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(emailParams) }).catch(e=>e);
-      
-      const adminEmailParams = {
-         service_id: 'service_hyfp919', template_id: 'template_nlst9qp', user_id: 'NHbYcpq7qYXu5mtf-', 
-         template_params: { ...emailParams.template_params, customer_email: 'umarali667@gmail.com' }
-      };
+      const adminEmailParams = { service_id: 'service_hyfp919', template_id: 'template_nlst9qp', user_id: 'NHbYcpq7qYXu5mtf-', template_params: { ...emailParams.template_params, customer_email: 'umarali667@gmail.com' } };
       fetch('https://api.emailjs.com/api/v1.0/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(adminEmailParams) }).catch(e=>e);
 
       closePopup(); setCurrentOrder(newOrder); setCart([]); setAppliedCoupon(null); 
       setCheckoutForm({ name: '', email: '', phone: '', address: '', mapLink: '', addressType: 'Home', secretCode: '', instructions: '', paymentMethod: 'COD', receipt: null });
       setIsPaymentDropdownOpen(false); navigateTo('order-success');
-
-    } catch (err) {
-      showPopup('error', 'Network Error', 'Could not reach the master ledger to process your order.');
-    }
+    } catch (err) { showPopup('error', 'Network Error', 'Could not reach the master ledger to process your order.'); }
   };
 
   const handleTrackOrder = async () => {
@@ -367,16 +351,36 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
       const data = await res.json();
-      if (res.ok) { 
-          localStorage.setItem('adminToken', data.token);
-          setIsAuthenticated(true); 
-          navigateTo('admin-dashboard'); 
-      } else { 
-          showPopup('error', 'Access Denied', 'Invalid credentials.'); 
-      }
-    } catch (err) { 
-        showPopup('error', 'Network Error', 'Could not reach the authentication server.'); 
-    }
+      if (res.ok) { localStorage.setItem('adminToken', data.token); setIsAuthenticated(true); navigateTo('admin-dashboard'); } 
+      else { showPopup('error', 'Access Denied', 'Invalid credentials.'); }
+    } catch (err) { showPopup('error', 'Network Error', 'Could not reach the authentication server.'); }
+  };
+
+  const saveStoreSettings = async () => {
+     showPopup('loading', 'Updating Configuration...', 'Saving rules to the ledger.');
+     try {
+       const res = await fetch(`${API_BASE}/admin/settings`, { 
+         method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }, 
+         body: JSON.stringify({ 
+             freeDeliveryThreshold: Number(storeSettings.freeDeliveryThreshold),
+             payment: storeSettings.payment
+         }) 
+       });
+       if(res.ok) showPopup('success', 'Settings Updated', 'The new rules are live.', 1500);
+       else throw new Error();
+     } catch(e) { showPopup('error', 'Error', 'Failed to update settings.'); }
+  };
+
+  const publishBanner = async () => {
+     showPopup('loading', 'Publishing Banner...', 'Broadcasting to all clients.');
+     try {
+       const res = await fetch(`${API_BASE}/admin/settings`, { 
+         method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }, 
+         body: JSON.stringify({ promoBanner }) 
+       });
+       if(res.ok) showPopup('success', 'Banner Live', 'Storefront announcement is updated.', 1500);
+       else throw new Error();
+     } catch(e) { showPopup('error', 'Error', 'Failed to update banner.'); }
   };
 
   const updateOrderStatus = async (id, newStatus) => {
@@ -389,10 +393,7 @@ export default function App() {
      showPopup('confirm', 'Delete Order?', 'This action cannot be undone.', 0, async () => {
         closePopup(); showPopup('loading', 'Deleting...', '');
         setOrders(prev => prev.filter(o => o._id !== id));
-        try { 
-           await fetch(`${API_BASE}/admin/orders/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` } }); 
-           showPopup('success', 'Order Deleted', '', 1500); 
-        } catch(e) { showPopup('error', 'Error', 'Could not delete order.'); }
+        try { await fetch(`${API_BASE}/admin/orders/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` } }); showPopup('success', 'Order Deleted', '', 1500); } catch(e) { showPopup('error', 'Error', 'Could not delete order.'); }
      });
   };
 
@@ -401,14 +402,9 @@ export default function App() {
     orders.forEach(o => {
       stats.counts[o.status] = (stats.counts[o.status] || 0) + 1;
       if (o.status !== 'Cancelled') {
-         stats.netRevenue += (o.totalAmount || 0);
-         stats.totalDiscounts += (o.discount || 0);
-         stats.cities[o.city] = (stats.cities[o.city] || 0) + (o.totalAmount || 0);
-
+         stats.netRevenue += (o.totalAmount || 0); stats.totalDiscounts += (o.discount || 0); stats.cities[o.city] = (stats.cities[o.city] || 0) + (o.totalAmount || 0);
          o.items?.forEach(item => {
-            const lineGross = (item.price || 0) * (item.qty || 1);
-            stats.grossRevenue += lineGross;
-            stats.products[item.name] = (stats.products[item.name] || 0) + lineGross;
+            const lineGross = (item.price || 0) * (item.qty || 1); stats.grossRevenue += lineGross; stats.products[item.name] = (stats.products[item.name] || 0) + lineGross;
             const cats = item.categories?.length ? item.categories : (item.category ? [item.category] : ['Uncategorized']);
             cats.forEach(c => { stats.categories[c] = (stats.categories[c] || 0) + lineGross; });
          });
@@ -426,10 +422,8 @@ export default function App() {
 
   const handleDropCat = async (dropIdx) => {
     if (draggedCatIdx === null || draggedCatIdx === dropIdx) return;
-    const editableCats = categories.filter(c => c !== "All");
-    const [draggedItem] = editableCats.splice(draggedCatIdx, 1);
-    editableCats.splice(dropIdx, 0, draggedItem); 
-    setCategories(["All", ...editableCats]); setDraggedCatIdx(null);
+    const editableCats = categories.filter(c => c !== "All"); const [draggedItem] = editableCats.splice(draggedCatIdx, 1);
+    editableCats.splice(dropIdx, 0, draggedItem); setCategories(["All", ...editableCats]); setDraggedCatIdx(null);
     try { await fetch(`${API_BASE}/admin/categories/reorder`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }, body: JSON.stringify({ categories: editableCats }) }); } catch(e){}
   };
 
@@ -462,20 +456,16 @@ export default function App() {
      
      showPopup('loading', 'Generating...', '');
      try {
-        const payload = { 
-           code: newCoupon.code, discountType: newCoupon.type, discountValue: Number(newCoupon.value), 
-           scope: newCoupon.scope, target: newCoupon.target, startDate: newCoupon.startDate, endDate: newCoupon.endDate, maxUses: Number(newCoupon.maxUses) || 0 
-        };
+        const payload = { code: newCoupon.code, discountType: newCoupon.type, discountValue: Number(newCoupon.value), scope: newCoupon.scope, target: newCoupon.target, startDate: newCoupon.startDate, endDate: newCoupon.endDate, maxUses: Number(newCoupon.maxUses) || 0 };
         const token = localStorage.getItem('adminToken');
         let res;
-        if (newCoupon._id) { res = await fetch(`${API_BASE}/admin/coupons/${newCoupon._id}`, { method: 'PUT', headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`}, body: JSON.stringify(payload) }); } 
-        else { res = await fetch(`${API_BASE}/admin/coupons`, { method: 'POST', headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`}, body: JSON.stringify(payload) }); }
+        if (newCoupon._id) res = await fetch(`${API_BASE}/admin/coupons/${newCoupon._id}`, { method: 'PUT', headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`}, body: JSON.stringify(payload) }); 
+        else res = await fetch(`${API_BASE}/admin/coupons`, { method: 'POST', headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`}, body: JSON.stringify(payload) });
 
         if(res.ok) { 
            const newC = await res.json();
            if (newCoupon._id) setAdminCoupons(prev => prev.map(c => c._id === newC._id ? newC : c));
            else setAdminCoupons(prev => [newC, ...prev]); 
-           
            setNewCoupon({ _id: null, code: '', type: 'percent', value: '', scope: 'all', target: '', startDate: '', endDate: '', maxUses: '' }); 
            showPopup('success', 'Coupon Active', `The code has been securely injected.`, 2000); 
         }
@@ -489,16 +479,12 @@ export default function App() {
 
   const deleteCoupon = async (id) => { setAdminCoupons(prev => prev.filter(c => c._id !== id)); await fetch(`${API_BASE}/admin/coupons/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` } }); };
 
-  // NEW: Added shippingTier to product mapping
   const openEditModal = (product) => {
     setEntryForm({ 
-       id: product._id || product.id, name: product.name, 
-       categories: product.categories?.length ? product.categories : [product.category].filter(Boolean), 
-       price: product.price, stock: product.stock || {}, 
-       shippingTier: product.shippingTier || 'T1',
+       id: product._id || product.id, name: product.name, categories: product.categories?.length ? product.categories : [product.category].filter(Boolean), 
+       price: product.price, stock: product.stock || {}, shippingTier: product.shippingTier || 'T1',
        image1: product.imageUrls?.[0] || '', image2: product.imageUrls?.[1] || '', image3: product.imageUrls?.[2] || '', 
-       shortDesc: product.shortDesc || '', longDesc: product.longDesc || '',
-       careWater: product.careWater || '', careSunlight: product.careSunlight || '', careClimate: product.careClimate || '', careBenefits: product.careBenefits || ''
+       shortDesc: product.shortDesc || '', longDesc: product.longDesc || '', careWater: product.careWater || '', careSunlight: product.careSunlight || '', careClimate: product.careClimate || '', careBenefits: product.careBenefits || ''
     });
     setCatSearch(''); setIsEditing(true); setShowEntryModal(true);
   };
@@ -511,11 +497,9 @@ export default function App() {
     const imageUrls = [entryForm.image1, entryForm.image2, entryForm.image3].filter(Boolean);
     if(imageUrls.length === 0) imageUrls.push("🪴");
     
-    // NEW: Added shippingTier to payload
     const payload = { 
        name: entryForm.name, category: entryForm.categories[0], categories: entryForm.categories, price: Number(entryForm.price) || 0, stock: entryForm.stock, imageUrls, 
-       shippingTier: entryForm.shippingTier, shortDesc: entryForm.shortDesc, longDesc: entryForm.longDesc,
-       careWater: entryForm.careWater, careSunlight: entryForm.careSunlight, careClimate: entryForm.careClimate, careBenefits: entryForm.careBenefits
+       shippingTier: entryForm.shippingTier, shortDesc: entryForm.shortDesc, longDesc: entryForm.longDesc, careWater: entryForm.careWater, careSunlight: entryForm.careSunlight, careClimate: entryForm.careClimate, careBenefits: entryForm.careBenefits
     };
     
     try {
@@ -536,8 +520,7 @@ export default function App() {
   const submitBulkEdit = async (e) => {
      e.preventDefault();
      showPopup('loading', 'Processing Bulk Update...', 'Updating the master ledger.');
-     const updatedProducts = [];
-     const token = localStorage.getItem('adminToken');
+     const updatedProducts = []; const token = localStorage.getItem('adminToken');
      for (let id of selectedProductIds) {
         const product = products.find(p => (p._id === id || p.id === id));
         if (!product) continue;
@@ -545,17 +528,13 @@ export default function App() {
         if (bulkEditForm.city && bulkEditForm.stock !== '') updatedStock[bulkEditForm.city] = Number(bulkEditForm.stock);
         let updatedCategories = bulkEditForm.categories.length > 0 ? bulkEditForm.categories : (product.categories?.length ? product.categories : [product.category]);
         let primaryCategory = updatedCategories[0];
-
         const payload = { ...product, category: primaryCategory, categories: updatedCategories, stock: updatedStock };
         try {
            const res = await fetch(`${API_BASE}/admin/products/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
            const data = await res.json(); updatedProducts.push(data);
         } catch(err) {}
      }
-     setProducts(prev => prev.map(p => {
-        const updated = updatedProducts.find(up => (up._id === p._id || up.id === p.id));
-        return updated ? updated : p;
-     }));
+     setProducts(prev => prev.map(p => { const updated = updatedProducts.find(up => (up._id === p._id || up.id === p.id)); return updated ? updated : p; }));
      setSelectedProductIds([]); setShowBulkEditModal(false); setBulkEditForm({ categories: [], city: '', stock: '' });
      showPopup('success', 'Update Complete', 'All selected items have been synchronized.', 2000);
   };
@@ -576,14 +555,12 @@ export default function App() {
   const toggleSelectProduct = (id) => { setSelectedProductIds(prev => prev.includes(id) ? prev.filter(pId => pId !== id) : [...prev, id]); };
   const toggleSelectAll = () => { if (selectedProductIds.length === products.length) setSelectedProductIds([]); else setSelectedProductIds(products.map(p => p._id || p.id)); };
 
-  // NEW: Appended ShippingTier to CSV headers and sample data
   const downloadSampleCSV = () => {
     const csvContent = "data:text/csv;charset=utf-8,Name,ImageURL1,ImageURL2,ImageURL3,Category,Price,ShortDescription,LongDescription,StockKarachi,StockIslamabad,CareWater,CareSunlight,CareClimate,CareBenefits,ShippingTier\nMonstera,https://via.placeholder.com/400x500,,,Indoor Plant,1500,Beautiful green plant,\"A highly detailed description of the Monstera plant.\",10,5,Water weekly,Bright indirect,18-24C,Air purifying,T2";
     const encodedUri = encodeURI(csvContent); const link = document.createElement("a"); link.setAttribute("href", encodedUri); link.setAttribute("download", "Sample_Products.csv");
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
-  // NEW: Parse shippingTier from col[14]
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -593,11 +570,7 @@ export default function App() {
         const text = event.target.result; const rows = text.split('\n').slice(1).filter(r => r.trim());
         const parseRow = (str) => {
           let res = [], curr = '', inQ = false;
-          for(let i=0; i<str.length; i++) {
-            if(str[i]==='"') inQ = !inQ;
-            else if(str[i]===',' && !inQ) { res.push(curr.trim()); curr = ''; }
-            else curr += str[i];
-          }
+          for(let i=0; i<str.length; i++) { if(str[i]==='"') inQ = !inQ; else if(str[i]===',' && !inQ) { res.push(curr.trim()); curr = ''; } else curr += str[i]; }
           res.push(curr.trim()); return res;
         };
         const parsedProducts = rows.map(row => {
@@ -605,10 +578,8 @@ export default function App() {
           const imgs = [cols[1], cols[2], cols[3]].filter(Boolean);
           return { 
              name: cols[0], imageUrls: imgs.length ? imgs : ['🪴'], categories: [cols[4]], category: cols[4], 
-             price: Number(cols[5]) || 0, shortDesc: cols[6], longDesc: cols[7], 
-             stock: { "Karachi": Number(cols[8]) || 0, "Islamabad": Number(cols[9]) || 0 },
-             careWater: cols[10] || '', careSunlight: cols[11] || '', careClimate: cols[12] || '', careBenefits: cols[13] || '',
-             shippingTier: cols[14] || 'T1'
+             price: Number(cols[5]) || 0, shortDesc: cols[6], longDesc: cols[7], stock: { "Karachi": Number(cols[8]) || 0, "Islamabad": Number(cols[9]) || 0 },
+             careWater: cols[10] || '', careSunlight: cols[11] || '', careClimate: cols[12] || '', careBenefits: cols[13] || '', shippingTier: cols[14] || 'T1'
           };
         }).filter(Boolean);
         setProducts(prev => [...parsedProducts, ...prev]);
@@ -640,6 +611,12 @@ export default function App() {
   const activeCoupons = adminCoupons.filter(c => new Date(c.endDate) >= nowTime && (c.maxUses === 0 || c.usedCount < c.maxUses));
   const expiredCoupons = adminCoupons.filter(c => new Date(c.endDate) < nowTime || (c.maxUses > 0 && c.usedCount >= c.maxUses));
   const filteredModalCats = categories.filter(c => c !== "All" && c.toLowerCase().includes(catSearch.toLowerCase()) && !entryForm.categories.includes(c));
+
+  // Determine which payment methods are active for checkout dropdown
+  const checkoutPaymentMethods = [];
+  if (storeSettings.payment?.cod) checkoutPaymentMethods.push({ id: 'COD', label: 'Cash on Delivery' });
+  if (storeSettings.payment?.trf) checkoutPaymentMethods.push({ id: 'TRF', label: 'Bank Transfer' });
+  if (storeSettings.payment?.card) checkoutPaymentMethods.push({ id: 'CARD', label: 'Credit / Debit Card' });
 
   return (
     <div className="min-h-screen bg-[#F7F5F0] font-sans text-[#1A1A1A]">
@@ -687,7 +664,7 @@ export default function App() {
           <div className="text-center max-w-xl w-full">
             <div className="flex justify-center mb-8"><BrandLogo iconSize="text-5xl md:text-6xl" textSize="text-4xl md:text-5xl" /></div>
             <h1 className="text-4xl md:text-6xl font-serif leading-[1.1] tracking-tight mb-6 mt-8">Select your region.</h1>
-            <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-16 border-b border-[#E5E0D8] pb-8">We curate specific logistics and inventory for each territory.</p>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-16 border-b border-[#E5E0D8] pb-8">I curate specific logistics and inventory for each territory.</p>
             <div className="flex flex-col gap-4">
               {cities.map(city => (
                 <button key={city} onClick={() => handleCitySelect(city)} className="w-full border border-[#1A1A1A]/20 hover:border-[#1A1A1A] py-5 text-sm tracking-widest font-light transition-colors group relative overflow-hidden">
@@ -903,6 +880,17 @@ export default function App() {
                     <div className="lg:col-span-5">
                       <div className="bg-[#EBE6E0] p-10 h-fit">
                         
+                        {!isFreeDelivery && cartTotal > 0 && (
+                          <div className="bg-white p-4 text-center text-xs font-serif mb-8 border border-[#E5E0D8]">
+                             You are <strong>{formatPrice(storeSettings.freeDeliveryThreshold - cartTotal)}</strong> away from unlocking <strong>Free Delivery</strong>!
+                          </div>
+                        )}
+                        {isFreeDelivery && cartTotal > 0 && (
+                          <div className="bg-[#2C3D30] text-white p-4 text-center text-xs font-serif mb-8 font-bold tracking-widest uppercase">
+                             🎉 Free Delivery Unlocked!
+                          </div>
+                        )}
+
                         <div className="mb-8 pb-8 border-b border-[#1A1A1A]/10">
                            <p className="text-[10px] uppercase tracking-[0.3em] mb-4">Promo Code</p>
                            <div className="flex gap-2">
@@ -911,7 +899,6 @@ export default function App() {
                            </div>
                         </div>
 
-                        {/* NEW: Shipping Integration in Cart */}
                         <div className="space-y-4 mb-12">
                            <div className="flex justify-between items-end"><span className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/60">Subtotal</span><span className="text-lg font-serif">{formatPrice(cartTotal)}</span></div>
                            
@@ -920,7 +907,11 @@ export default function App() {
                                  <span>Delivery Fee</span>
                                  <span className="text-[8px] opacity-60 mt-0.5">Fleet: {DELIVERY_TIERS[activeShippingTier].name}</span>
                               </span>
-                              <span className="text-sm font-serif">{deliveryCharges > 0 ? formatPrice(deliveryCharges) : 'Calculated'}</span>
+                              <span className="text-sm font-serif">
+                                {isFreeDelivery ? (
+                                  <><span className="line-through text-[#1A1A1A]/40 mr-2">{formatPrice(originalDeliveryCharge)}</span> <span className="text-[#2C3D30] font-bold">FREE</span></>
+                                ) : deliveryCharges > 0 ? formatPrice(deliveryCharges) : 'Calculated'}
+                              </span>
                            </div>
 
                            {appliedCoupon && (
@@ -970,7 +961,6 @@ export default function App() {
                       <input type="text" name="mapLink" placeholder="Google Maps Link (Optional)" onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A]" />
                       <textarea name="instructions" placeholder="Special Instructions for Delivery..." onChange={handleCheckoutChange} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A] mt-4" rows="2"></textarea>
                       
-                      {/* NEW: Logistics Distance Tracker UI */}
                       <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#E5E0D8] pb-4 mt-12">Rider Logistics Zone</h3>
                       <p className="text-[11px] text-[#1A1A1A]/50 mb-4 font-sans uppercase tracking-wider">Select relative radius distance from our regional distribution hub:</p>
                       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -991,32 +981,52 @@ export default function App() {
                         <span className="font-mono bg-[#EBE6E0] px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider">{activeShippingTier} Category</span>
                       </div>
 
-                      <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#E5E0D8] pb-4 mt-12">Payment</h3>
-                      <div className="relative w-full">
-                         <div onClick={() => setIsPaymentDropdownOpen(!isPaymentDropdownOpen)} className="w-full bg-white border border-[#E5E0D8] p-4 text-sm font-serif flex justify-between items-center cursor-pointer hover:border-[#1A1A1A] transition-colors">
-                           <span>{checkoutForm.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}</span>
-                           <ChevronDown size={14} className={`transition-transform duration-300 ${isPaymentDropdownOpen ? 'rotate-180' : ''}`} />
-                         </div>
-                         {isPaymentDropdownOpen && (
-                           <div className="absolute top-full left-0 w-full bg-white border border-[#E5E0D8] shadow-xl z-50 mt-1 flex flex-col overflow-hidden">
-                              <div onClick={() => { handleCheckoutChange({target:{name:'paymentMethod', value:'COD'}}); setIsPaymentDropdownOpen(false); }} className={`p-4 text-sm font-serif cursor-pointer hover:bg-[#F7F5F0] transition-colors ${checkoutForm.paymentMethod === 'COD' ? 'bg-[#EBE6E0] font-bold' : ''}`}>Cash on Delivery</div>
-                              <div onClick={() => { handleCheckoutChange({target:{name:'paymentMethod', value:'TRF'}}); setIsPaymentDropdownOpen(false); }} className={`p-4 text-sm font-serif cursor-pointer hover:bg-[#F7F5F0] transition-colors ${checkoutForm.paymentMethod === 'TRF' ? 'bg-[#EBE6E0] font-bold' : ''}`}>Bank Transfer</div>
+                      <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#E5E0D8] pb-4 mt-12">Payment Validation</h3>
+                      
+                      {checkoutPaymentMethods.length > 0 ? (
+                        <div className="relative w-full">
+                           <div onClick={() => setIsPaymentDropdownOpen(!isPaymentDropdownOpen)} className="w-full bg-white border border-[#E5E0D8] p-4 text-sm font-serif flex justify-between items-center cursor-pointer hover:border-[#1A1A1A] transition-colors">
+                             <span>{checkoutPaymentMethods.find(m => m.id === checkoutForm.paymentMethod)?.label || 'Select Payment Method'}</span>
+                             <ChevronDown size={14} className={`transition-transform duration-300 ${isPaymentDropdownOpen ? 'rotate-180' : ''}`} />
                            </div>
-                         )}
-                      </div>
+                           {isPaymentDropdownOpen && (
+                             <div className="absolute top-full left-0 w-full bg-white border border-[#E5E0D8] shadow-xl z-50 mt-1 flex flex-col overflow-hidden">
+                                {checkoutPaymentMethods.map(m => (
+                                   <div key={m.id} onClick={() => { handleCheckoutChange({target:{name:'paymentMethod', value: m.id}}); setIsPaymentDropdownOpen(false); }} className={`p-4 text-sm font-serif cursor-pointer hover:bg-[#F7F5F0] transition-colors ${checkoutForm.paymentMethod === m.id ? 'bg-[#EBE6E0] font-bold' : ''}`}>
+                                      {m.label}
+                                   </div>
+                                ))}
+                             </div>
+                           )}
+                        </div>
+                      ) : (
+                         <p className="text-red-900 text-sm py-4">Our payment gateways are currently undergoing maintenance. Please try again later.</p>
+                      )}
 
+                      {/* Dynamic Payment Details UI */}
                       {checkoutForm.paymentMethod === 'TRF' && (
                          <div className="bg-[#EBE6E0] p-6 border border-[#1A1A1A]/20 mt-4 animate-in fade-in">
-                            <p className="text-sm mb-4">Transfer to: <strong>Meezan Bank | A/C 0123456789 | Doubble Tech</strong></p>
+                            <p className="text-sm mb-4">Transfer to: <br/><strong>{storeSettings.payment?.bankDetails}</strong></p>
                             <label className="text-[10px] uppercase tracking-[0.2em] font-bold block mb-2">Upload Transfer Screenshot *</label>
-                            <input type="file" accept="image/*" required onChange={handleReceiptUpload} className="text-sm w-full" />
+                            <input type="file" accept="image/*" required onChange={handleReceiptUpload} className="text-sm w-full bg-white p-2 border border-[#E5E0D8]" />
+                         </div>
+                      )}
+
+                      {checkoutForm.paymentMethod === 'CARD' && (
+                         <div className="bg-white p-6 border border-[#E5E0D8] mt-4 animate-in fade-in shadow-sm relative overflow-hidden">
+                            <p className="text-xs uppercase tracking-widest mb-4 font-bold text-[#2C3D30]">Secure Gateway: {storeSettings.payment?.gateway?.provider || 'Merchant'} </p>
+                            <input type="text" placeholder="Card Number" className="w-full bg-[#F7F5F0] border-b border-[#1A1A1A]/20 p-3 text-sm focus:outline-none mb-3 font-mono tracking-widest" />
+                            <div className="flex gap-4">
+                               <input type="text" placeholder="MM/YY" className="w-1/2 bg-[#F7F5F0] border-b border-[#1A1A1A]/20 p-3 text-sm focus:outline-none font-mono tracking-widest" />
+                               <input type="text" placeholder="CVC" className="w-1/2 bg-[#F7F5F0] border-b border-[#1A1A1A]/20 p-3 text-sm focus:outline-none font-mono tracking-widest" />
+                            </div>
+                            <p className="text-[9px] text-[#1A1A1A]/40 uppercase tracking-widest mt-6 text-center">🔐 Encrypted and Secured via tokenization.</p>
                          </div>
                       )}
                     </div>
                   </div>
                   <div className="lg:col-span-5">
                     <div className="bg-[#EBE6E0] p-10 h-fit sticky top-32">
-                      {/* NEW: Shipping Integration in Checkout Sidebar */}
                       <div className="space-y-4 mb-12">
                          <div className="flex justify-between items-end"><span className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/60">Subtotal</span><span className="text-lg font-serif">{formatPrice(cartTotal)}</span></div>
                          
@@ -1025,7 +1035,11 @@ export default function App() {
                                <span>Delivery Fee</span>
                                <span className="text-[8px] opacity-60 mt-0.5">Fleet: {DELIVERY_TIERS[activeShippingTier].name}</span>
                             </span>
-                            <span className="text-sm font-serif">{deliveryCharges > 0 ? formatPrice(deliveryCharges) : 'Calculated'}</span>
+                            <span className="text-sm font-serif">
+                                {isFreeDelivery ? (
+                                  <><span className="line-through text-[#1A1A1A]/40 mr-2">{formatPrice(originalDeliveryCharge)}</span> <span className="text-[#2C3D30] font-bold">FREE</span></>
+                                ) : deliveryCharges > 0 ? formatPrice(deliveryCharges) : 'Calculated'}
+                            </span>
                          </div>
 
                          {appliedCoupon && (
@@ -1042,7 +1056,7 @@ export default function App() {
 
                          <div className="flex justify-between items-end pt-4 border-t border-[#1A1A1A]/20"><span className="text-[10px] uppercase tracking-[0.3em]">Total</span><span className="text-3xl font-serif">{formatPrice(finalTotal)}</span></div>
                       </div>
-                      <button type="submit" className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5">Authorize Order</button>
+                      <button type="submit" disabled={checkoutPaymentMethods.length === 0} className="w-full bg-[#1A1A1A] hover:bg-[#2C3D30] text-[#F7F5F0] text-[10px] uppercase tracking-[0.3em] py-5 disabled:opacity-50 disabled:cursor-not-allowed">Authorize Order</button>
                     </div>
                   </div>
                 </form>
@@ -1053,12 +1067,14 @@ export default function App() {
               <div className="max-w-2xl mx-auto px-8 py-32 text-center animate-in fade-in">
                 <div className="flex justify-center mb-12"><BrandLogo iconSize="text-5xl md:text-6xl" textSize="text-4xl md:text-5xl" /></div>
                 <h2 className="text-6xl font-serif mb-6 text-[#2C3D30]">Acquired.</h2>
-                <p className="text-2xl font-serif text-[#1A1A1A] mb-8 italic leading-relaxed">"We know you have many choices—<br/>thank you for picking us."</p>
+                <p className="text-2xl font-serif text-[#1A1A1A] mb-8 italic leading-relaxed">"I know you have many choices—<br/>thank you for picking me."</p>
                 <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-6">Reference: <span className="bg-[#1A1A1A] text-white px-2 py-1 font-bold">{currentOrder.orderNumber || currentOrder.id}</span></p>
                 <p className="text-lg text-[#1A1A1A]/60 font-light mb-16">
                   Your selections have been reserved for dispatch in {selectedCity}.<br/><br/>
                   {currentOrder.customer?.paymentMethod === 'TRF' 
-                     ? `We will verify your bank transfer of ${formatPrice(currentOrder.totalAmount)} shortly.`
+                     ? `I will verify your bank transfer of ${formatPrice(currentOrder.totalAmount)} shortly.`
+                     : currentOrder.customer?.paymentMethod === 'CARD' 
+                     ? `Your card payment of ${formatPrice(currentOrder.totalAmount)} has been securely tokenized.`
                      : `Please prepare ${formatPrice(currentOrder.totalAmount)} for Cash on Delivery.`}
                 </p>
                 <button onClick={() => navigateTo('track-order')} className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A] pb-1 hover:text-[#2C3D30] mb-4 block mx-auto">Track this Order</button>
@@ -1091,7 +1107,7 @@ export default function App() {
                       <button onClick={() => setAdminTab('cities')} className={`pb-2 ${adminTab === 'cities' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Regions</button>
                       <button onClick={() => setAdminTab('categories')} className={`pb-2 ${adminTab === 'categories' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Categories</button>
                       <button onClick={() => setAdminTab('coupons')} className={`pb-2 ${adminTab === 'coupons' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Coupons</button>
-                      <button onClick={() => setAdminTab('promotions')} className={`pb-2 ${adminTab === 'promotions' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Promotions</button>
+                      <button onClick={() => setAdminTab('promotions')} className={`pb-2 ${adminTab === 'promotions' ? 'border-b border-[#1A1A1A]' : 'opacity-40'}`}>Settings & Promos</button>
                     </div>
                   </div>
                   <div className="flex gap-4 items-center">
@@ -1168,6 +1184,31 @@ export default function App() {
                            </div>
                         </div>
                      </div>
+
+                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                        <div>
+                           <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A]/10 pb-4 mb-6">Top Categories (Gross)</h3>
+                           <div className="space-y-4">
+                              {Object.entries(aStats.categories).sort((a,b)=>b[1]-a[1]).map(([cat, rev], idx) => (
+                                 <div key={cat} className="flex justify-between items-center bg-white p-4 border border-[#E5E0D8]">
+                                    <span className="font-serif text-lg"><span className="text-[#1A1A1A]/30 mr-2">#{idx+1}</span> {cat}</span>
+                                    <span className="tracking-widest">{formatPrice(rev)}</span>
+                                 </div>
+                              ))}
+                           </div>
+                        </div>
+                        <div>
+                           <h3 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A]/10 pb-4 mb-6">Top Products (Gross)</h3>
+                           <div className="space-y-4">
+                              {Object.entries(aStats.products).sort((a,b)=>b[1]-a[1]).slice(0, 10).map(([prod, rev], idx) => (
+                                 <div key={prod} className="flex justify-between items-center bg-white p-4 border border-[#E5E0D8]">
+                                    <span className="font-serif text-lg truncate pr-4"><span className="text-[#1A1A1A]/30 mr-2">#{idx+1}</span> {prod}</span>
+                                    <span className="tracking-widest shrink-0">{formatPrice(rev)}</span>
+                                 </div>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
                   </div>
                 )}
 
@@ -1227,18 +1268,19 @@ export default function App() {
                                 <div className="bg-[#F7F5F0] p-6 border border-[#E5E0D8]">
                                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#1A1A1A]/50 mb-4 border-b border-[#1A1A1A]/10 pb-2">Fulfillment Data</p>
                                    <div className="flex justify-between mb-3">
-                                      <span><strong>Payment:</strong> {order.customer?.paymentMethod === 'TRF' ? 'Bank Transfer' : 'Cash on Delivery'}</span>
+                                      <span><strong>Payment:</strong> {order.customer?.paymentMethod === 'TRF' ? 'Bank Transfer' : order.customer?.paymentMethod === 'CARD' ? 'Secure Card Payment' : 'Cash on Delivery'}</span>
                                       {order.discount > 0 && <span className="text-green-700 font-bold bg-green-50 px-2 py-1 text-xs border border-green-200">Discount: PKR {order.discount}</span>}
                                    </div>
                                    {order.customer?.secretCode && <p className="mb-4"><strong>Secret Code:</strong> <span className="font-mono bg-yellow-200 text-yellow-900 px-3 py-1 font-bold tracking-widest border border-yellow-300 ml-2">{order.customer.secretCode}</span></p>}
                                    
-                                   {/* NEW: Logistics Admin Info Update */}
                                    <p className="mb-3">
                                       <strong>Logistics Routing: </strong> 
                                       <span className="text-xs uppercase font-mono tracking-wider bg-gray-100 border px-1.5 py-0.5">
                                         {order.shippingTier || 'T1'} ({order.distanceType === 'extended' ? 'Long > 10km' : 'Short < 10km'}) 
                                       </span> 
-                                      <span className="ml-2 font-bold text-xs text-[#2C3D30]">+ {formatPrice(order.deliveryCharges || 0)}</span>
+                                      <span className="ml-2 font-bold text-xs text-[#2C3D30]">
+                                         {order.deliveryCharges === 0 ? <span className="text-green-700 bg-green-50 px-2 py-0.5 border border-green-200">FREE</span> : `+ ${formatPrice(order.deliveryCharges)}`}
+                                      </span>
                                    </p>
 
                                    <div className="mt-6">
@@ -1271,11 +1313,68 @@ export default function App() {
                   </div>
                 )}
 
-                {/* --- PROMOTIONS & MARKETING TAB --- */}
+                {/* --- SETTINGS & PROMOS TAB --- */}
                 {adminTab === 'promotions' && (
                   <div className="max-w-5xl animate-in fade-in">
                     
-                    {/* STOREFRONT BANNER SETTINGS */}
+                    {/* NEW: DYNAMIC PAYMENT GATEWAY CONFIGURATION */}
+                    <div className="bg-white border border-[#E5E0D8] shadow-sm p-8 mb-12">
+                       <h4 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A]/10 pb-4 mb-6 font-bold text-[#1A1A1A]">Payment & Gateway Settings</h4>
+                       
+                       <p className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-4">Active Checkout Methods</p>
+                       <div className="flex flex-wrap gap-8 mb-8 bg-[#F7F5F0] p-4 border border-[#E5E0D8]">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer hover:opacity-70"><input type="checkbox" checked={storeSettings.payment?.cod} onChange={e => setStoreSettings({...storeSettings, payment: {...storeSettings.payment, cod: e.target.checked}})} className="accent-[#1A1A1A] w-4 h-4" /> Cash on Delivery (COD)</label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer hover:opacity-70"><input type="checkbox" checked={storeSettings.payment?.trf} onChange={e => setStoreSettings({...storeSettings, payment: {...storeSettings.payment, trf: e.target.checked}})} className="accent-[#1A1A1A] w-4 h-4" /> Bank Transfer</label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer hover:opacity-70"><input type="checkbox" checked={storeSettings.payment?.card} onChange={e => setStoreSettings({...storeSettings, payment: {...storeSettings.payment, card: e.target.checked}})} className="accent-[#1A1A1A] w-4 h-4" /> Pay by Card</label>
+                       </div>
+
+                       {storeSettings.payment?.trf && (
+                          <div className="mb-8 animate-in fade-in">
+                             <label className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-2">Bank Account Details (Visible to Clients at Checkout)</label>
+                             <input type="text" value={storeSettings.payment?.bankDetails || ''} onChange={e => setStoreSettings({...storeSettings, payment: {...storeSettings.payment, bankDetails: e.target.value}})} placeholder="e.g. Meezan Bank | A/C 0123456789 | Doubble Tech" className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                          </div>
+                       )}
+
+                       {storeSettings.payment?.card && (
+                          <div className="mb-8 animate-in fade-in">
+                             <p className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-4 border-b border-[#E5E0D8] pb-2">Merchant API Tokens</p>
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-[#F7F5F0] p-6 border border-[#E5E0D8]">
+                                <div>
+                                   <label className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-2">Provider Name</label>
+                                   <input type="text" placeholder="e.g., Stripe, Safepay" value={storeSettings.payment?.gateway?.provider || ''} onChange={e => setStoreSettings({...storeSettings, payment: {...storeSettings.payment, gateway: {...storeSettings.payment.gateway, provider: e.target.value}}})} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A]" />
+                                </div>
+                                <div>
+                                   <label className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-2">Public API Key</label>
+                                   <input type="text" value={storeSettings.payment?.gateway?.apiKey || ''} onChange={e => setStoreSettings({...storeSettings, payment: {...storeSettings.payment, gateway: {...storeSettings.payment.gateway, apiKey: e.target.value}}})} placeholder="pk_test_..." className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A] font-mono text-xs" />
+                                </div>
+                                <div>
+                                   <label className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-2">Secret API Key</label>
+                                   <input type="password" value={storeSettings.payment?.gateway?.apiSecret || ''} onChange={e => setStoreSettings({...storeSettings, payment: {...storeSettings.payment, gateway: {...storeSettings.payment.gateway, apiSecret: e.target.value}}})} placeholder="sk_test_..." className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A] font-mono text-xs" />
+                                </div>
+                             </div>
+                          </div>
+                       )}
+
+                       <div className="flex justify-end">
+                          <button onClick={saveStoreSettings} className="bg-[#1A1A1A] text-white px-8 py-3 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30]">Save Configuration</button>
+                       </div>
+                    </div>
+
+                    {/* STORE SETTINGS (FREE DELIVERY) */}
+                    <div className="bg-white border border-[#E5E0D8] shadow-sm p-8 mb-12">
+                       <h4 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A]/10 pb-4 mb-6 font-bold text-[#1A1A1A]">Store Settings</h4>
+                       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                          <div className="md:col-span-3">
+                             <label className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-2">Free Delivery Threshold (PKR)</label>
+                             <input type="number" value={storeSettings.freeDeliveryThreshold} onChange={e => setStoreSettings({...storeSettings, freeDeliveryThreshold: e.target.value})} placeholder="e.g., 9999" className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A] tracking-widest font-mono" />
+                          </div>
+                          <div className="flex items-center gap-4 pb-2">
+                             <button onClick={saveStoreSettings} className="bg-[#1A1A1A] text-white px-6 py-2 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30] w-full">Save Rules</button>
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* PROMO BANNER */}
                     <div className="bg-white border border-[#E5E0D8] shadow-sm p-8 mb-12">
                        <h4 className="text-[10px] uppercase tracking-[0.3em] border-b border-[#1A1A1A]/10 pb-4 mb-6 font-bold text-[#1A1A1A]">Announcement Banner</h4>
                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
@@ -1287,10 +1386,7 @@ export default function App() {
                              <label className="text-sm flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" checked={promoBanner.isActive} onChange={e => setPromoBanner({...promoBanner, isActive: e.target.checked})} className="accent-[#1A1A1A]" /> Active
                              </label>
-                             <button onClick={() => {
-                                localStorage.setItem('pc_promo_banner', JSON.stringify(promoBanner));
-                                showPopup('success', 'Banner Updated', 'Storefront announcement is live.', 1500);
-                             }} className="bg-[#1A1A1A] text-white px-6 py-2 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30]">Publish</button>
+                             <button onClick={publishBanner} className="bg-[#1A1A1A] text-white px-6 py-2 text-[10px] uppercase tracking-[0.2em] hover:bg-[#2C3D30]">Publish</button>
                           </div>
                        </div>
                     </div>
@@ -1628,7 +1724,6 @@ export default function App() {
                 
                 <form onSubmit={submitEntry} className="flex-1 overflow-y-auto pr-4 grid grid-cols-1 lg:grid-cols-10 gap-x-8 gap-y-6">
                   
-                  {/* ROW 1: NEW TIER DROPDOWN ADDED HERE */}
                   <div className="lg:col-span-3">
                      <label className="text-[9px] uppercase tracking-[0.2em] text-[#1A1A1A]/50 block mb-2">Name</label>
                      <input type="text" required value={entryForm.name} onChange={e=>setEntryForm({...entryForm, name: e.target.value})} className="w-full bg-transparent border-b border-[#1A1A1A]/20 pb-2 text-sm focus:outline-none focus:border-[#1A1A1A] transition-colors rounded-none" />
