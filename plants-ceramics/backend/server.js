@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// SECURED: Moved credentials to .env file
+// SECURED: Credentials from .env
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -20,11 +20,33 @@ mongoose.connect('mongodb://127.0.0.1:27017/plants_ceramics')
   .then(() => console.log('🌿 Connected to MongoDB'))
   .catch(err => console.error('DB Error:', err));
 
+// DYNAMIC SETTINGS SCHEMA
+const settingsSchema = new mongoose.Schema({
+  freeDeliveryThreshold: { type: Number, default: 9999 },
+  promoBanner: {
+    isActive: { type: Boolean, default: false },
+    text: { type: String, default: '🎉 FLASH SALE: USE CODE BOTANICAL20 FOR 20% OFF!' }
+  },
+  payment: {
+    cod: { type: Boolean, default: true },
+    trf: { type: Boolean, default: true },
+    card: { type: Boolean, default: false },
+    bankDetails: { type: String, default: 'Meezan Bank | A/C 0123456789 | Doubble Tech' },
+    gateway: { 
+      provider: { type: String, default: 'Stripe' }, 
+      apiKey: { type: String, default: '' }, 
+      apiSecret: { type: String, default: '' } 
+    }
+  },
+  updatedAt: { type: Date, default: Date.now }
+});
+const Settings = mongoose.model('Settings', settingsSchema);
+
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true }, category: { type: String }, categories: { type: [String], default: [] }, 
   price: { type: Number, required: true }, stock: { type: Map, of: Number, default: {} }, 
   isBykeaEligible: { type: Boolean, default: true }, 
-  shippingTier: { type: String, default: 'T1' }, // NEW: Logistics Tier
+  shippingTier: { type: String, default: 'T1' }, 
   imageUrls: [String], 
   shortDesc: String, longDesc: String, 
   careWater: String, careSunlight: String, careClimate: String, careBenefits: String,
@@ -35,9 +57,9 @@ const Product = mongoose.model('Product', productSchema);
 const orderSchema = new mongoose.Schema({
   orderNumber: { type: String, unique: true }, city: String, customer: { type: Object }, 
   items: Array, totalAmount: Number, discount: { type: Number, default: 0 }, 
-  deliveryCharges: { type: Number, default: 0 }, // NEW
-  shippingTier: { type: String, default: 'T1' }, // NEW
-  distanceType: { type: String, default: 'short' }, // NEW
+  deliveryCharges: { type: Number, default: 0 }, 
+  shippingTier: { type: String, default: 'T1' }, 
+  distanceType: { type: String, default: 'short' }, 
   couponCode: { type: String, default: null }, status: { type: String, default: 'Pending' }, createdAt: { type: Date, default: Date.now }
 });
 const Order = mongoose.model('Order', orderSchema);
@@ -73,7 +95,23 @@ app.get('/api/catalog', async (req, res) => {
     const products = await Product.find().sort({ createdAt: -1 });
     const categories = await Taxonomy.find({ type: 'category' }).sort({ order: 1, name: 1 });
     const cities = await Taxonomy.find({ type: 'city' }).sort({ order: 1, name: 1 });
-    res.json({ products, categories: ["All", ...categories.map(c => c.name)], cities: cities.map(c => c.name).length ? cities.map(c => c.name) : ["Islamabad", "Karachi"] });
+    
+    let settings = await Settings.findOne();
+    if (!settings) { settings = await new Settings().save(); }
+
+    // SECURITY: Strip Secret Keys from public storefront payload
+    const safeSettings = JSON.parse(JSON.stringify(settings));
+    if (safeSettings.payment && safeSettings.payment.gateway) {
+        delete safeSettings.payment.gateway.apiKey;
+        delete safeSettings.payment.gateway.apiSecret;
+    }
+
+    res.json({ 
+      products, 
+      categories: ["All", ...categories.map(c => c.name)], 
+      cities: cities.map(c => c.name).length ? cities.map(c => c.name) : ["Islamabad", "Karachi"],
+      settings: safeSettings 
+    });
   } catch (error) { res.status(500).json({ error: 'Failed' }); }
 });
 
@@ -129,6 +167,40 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 // PROTECTED ADMIN ROUTES
+
+// Fetch full settings (including keys) for the admin dashboard
+app.get('/api/admin/settings', protect, async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    if (!settings) settings = await new Settings().save();
+    res.json(settings);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/admin/settings', protect, async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    if (!settings) settings = new Settings();
+    if (req.body.freeDeliveryThreshold !== undefined) settings.freeDeliveryThreshold = req.body.freeDeliveryThreshold;
+    if (req.body.promoBanner !== undefined) settings.promoBanner = req.body.promoBanner;
+    
+    // Deep merge for payment settings
+    if (req.body.payment !== undefined) {
+       settings.payment = {
+          ...settings.payment,
+          ...req.body.payment,
+          gateway: {
+             ...settings.payment?.gateway,
+             ...req.body.payment?.gateway
+          }
+       };
+    }
+    
+    await settings.save();
+    res.json({ success: true, settings });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/upload', protect, async (req, res) => {
   try { const uploadResponse = await cloudinary.uploader.upload(req.body.image); res.json({ url: uploadResponse.secure_url }); } catch (err) { res.status(500).json({ error: err.message }); }
 });
